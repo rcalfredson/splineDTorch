@@ -1,0 +1,5 @@
+{
+    "backbone": "fcrn_a",
+    "train_epochs": 400,
+    "train_learning_rate": 0.003
+}

@@ -127,3 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# SplineDist-specific folders and files
+splinedist_*.pth
+*lr_history*.json
+saved_models/

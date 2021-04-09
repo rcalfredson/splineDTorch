@@ -1,0 +1,27 @@
+{
+    "axes": "YXC",
+    "backbone": "unet",
+    "n_control_points": 8,
+    "n_dim": 2,
+    "grid_subsampling_factor": [
+        2,
+        2
+    ],
+    "lr_reduct_factor": 0.5,
+    "lr_patience": 20,
+    "train_background_reg": 1e-4,
+    "train_batch_size": 4,
+    "train_completion_crop": 32,
+    "train_dist_loss": "mae",
+    "train_epochs": 400,
+    "train_foreground_only": 0.9,
+    "train_learning_rate": 0.0003,
+    "train_loss_weights": [1, 0.2],
+    "train_patch_size": [
+        160,
+        160
+    ],
+    "train_shape_completion": false,
+    "train_steps_per_epoch": 100,
+    "validation_batch_size": 10
+}
