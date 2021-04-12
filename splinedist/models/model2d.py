@@ -1,7 +1,6 @@
 from collections import namedtuple
 import os
-from splinedist.constants import DEVICE
-from splinedist.models.fcrn import FCRN_A
+
 from splinedist.models.backbone_types import BackboneTypes
 from csbdeep.data import Normalizer, NoNormalizer, Resizer, NoResizer
 from csbdeep.internals.predict import tile_iterator
@@ -10,7 +9,9 @@ import math
 import numpy as np
 import spline_generator as sg
 from splinedist.config import Config
+from splinedist.constants import DEVICE
 from splinedist.geometry.geom2d import dist_to_coord, polygons_to_label
+from splinedist.models.fcrn import FCRN_A
 from splinedist.models.unet_block import UNet
 from splinedist.nms import non_maximum_suppression
 from splinedist.utils import _is_power_of_2, data_dir

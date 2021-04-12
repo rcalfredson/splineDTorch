@@ -4,7 +4,7 @@ from splinedist.constants import DEVICE
 from matplotlib import pyplot as plt
 from numpy.core.defchararray import mod
 import torch
-from csbdeep.utils import normalize
+from csbdeep.utils import normalize as normalize_old
 import datetime
 from glob import glob
 import json
@@ -21,12 +21,15 @@ from splinedist.utils import (
     fill_label_holes,
     get_contoursize_max,
     grid_generator,
+    normalize,
     phi_generator,
 )
 import sys
 from tifffile import imread
 import timeit
 from tqdm import tqdm
+
+import cv2
 
 ## temp command: python trainByBatchLinux.py 10 "--config configs/fcrn_backbone.json --plot --val_interval 2"
 
@@ -84,12 +87,12 @@ assert all(Path(x).name == Path(y).name for x, y in zip(X, Y))
 X = list(map(imread, X[:10]))
 Y = list(map(imread, Y[:10]))
 n_channel = 1 if X[0].ndim == 2 else X[0].shape[-1]
-axis_norm = (0, 1)  # normalize channels independently
+ind_norm = True  # normalize channels independently
 
 if n_channel > 1:
     print(
         "Normalizing image channels %s."
-        % ("jointly" if axis_norm is None or 2 in axis_norm else "independently")
+        % ("independently" if ind_norm else "jointly")
     )
     sys.stdout.flush()
 
@@ -135,17 +138,17 @@ def write_lr_history():
         json.dump(lr_history, my_f, ensure_ascii=False, indent=4)
 
 
-def random_fliprot(img, mask):
+def random_fliprot(img: torch.Tensor, mask: torch.Tensor):
     assert img.ndim >= mask.ndim
     axes = tuple(range(mask.ndim))
     perm = tuple(np.random.permutation(axes))
-    img = img.transpose(perm + tuple(range(mask.ndim, img.ndim)))
-    mask = mask.transpose(perm)
+    img = img.permute(perm + tuple(range(mask.ndim, img.ndim)))
+    mask = mask.permute(perm)
     for ax in axes:
         if np.random.rand() > 0.5:
-            img = np.flip(img, axis=ax)
-            mask = np.flip(mask, axis=ax)
-    img = normalize(img, 1, 99.8, axis=axis_norm)
+            img = torch.flip(img, dims=(ax,))
+            mask = torch.flip(mask, dims=(ax,))
+    img = normalize(img, 1, 99.8, ind_norm=ind_norm)
     return img, mask
 
 
@@ -163,7 +166,7 @@ def augmenter(x, y):
     x = random_intensity_change(x)
     # add some gaussian noise
     sig = 0.02 * np.random.uniform(0, 1)
-    x = x + sig * np.random.normal(0, 1, x.shape)
+    x = x + sig * torch.normal(0, 1, size=x.shape).float().to(DEVICE)
     return x, y
 
 

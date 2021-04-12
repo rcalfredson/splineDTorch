@@ -3,6 +3,7 @@ from splinedist.rollingSequence import RollingSequence
 from csbdeep.utils import _raise
 import numpy as np
 from skimage.segmentation import clear_border
+from splinedist.constants import DEVICE
 from splinedist.geometry.geom2d import spline_dist
 from splinedist.rotation import sample_patches as sample_patches_rot
 from splinedist.sample_patches import get_valid_inds
@@ -11,6 +12,7 @@ import torch
 
 import matplotlib.pyplot as plt
 import cProfile
+
 
 class SplineDistDataBase(RollingSequence):
     def __init__(
@@ -281,9 +283,9 @@ class SplineDistData2D(SplineDistDataBase):
             for k in idx
         ]
         sample_patch_time = timeit.default_timer()
-        print(f'time spent sampling patches: {sample_patch_time - start_t:.3f}')
-        pr = cProfile.Profile()
-        pr.enable()
+        print(f"time spent sampling patches: {sample_patch_time - start_t:.3f}")
+        # pr = cProfile.Profile()
+        # pr.enable()
         # self.arrays = [
         #     sample_patches(
         #         (self.Y[k],) + self.channels_as_tuple(self.X[k]),
@@ -294,21 +296,38 @@ class SplineDistData2D(SplineDistDataBase):
         #     for k in idx
         # ]
         if self.n_channel is None:
-            X, Y = list(zip(*[(x[0][self.b], y[0]) for y, x in self.arrays]))
+            X, Y = list(
+                zip(
+                    *[
+                        (
+                            x[0][self.b],
+                            y[0],
+                        )
+                        for y, x in self.arrays
+                    ]
+                )
+            )
         else:
             images, masks = [], []
             for y, *x in self.arrays:
                 for i in range(x[0].shape[0]):
-                    images.append(np.stack([_x[i] for _x in x], axis=-1))
+                    images.append(
+                        torch.stack(
+                            [_x[i] for _x in x], dim=-1
+                        )
+                    )
                     masks.append(y[i])
 
             X, Y = list(zip(*[(images[i], masks[i]) for i in range(len(images))]))
 
         X, Y = tuple(zip(*tuple(self.augmenter(_x, _y) for _x, _y in zip(X, Y))))
 
-        X = np.stack(X)
+        X = torch.stack(X)
         if X.ndim == 3:  # input image has no channel axis
-            X = np.expand_dims(X, -1)
+            X = torch.unsqueeze(X, -1)
+
+        X = X.cpu().numpy()
+        Y = [y.cpu().numpy().astype(np.uint8) for y in Y]
 
         if not self.skip_dist_prob_calc:
             prob = np.stack([edt_prob(lbl[self.b]) for lbl in Y])
@@ -340,15 +359,17 @@ class SplineDistData2D(SplineDistDataBase):
             dist = dist[self.ss_grid]
             dist = np.concatenate([dist, dist_mask], axis=-1)
             num_instances = [len(np.unique(el)) - 1 for el in Y]
-            pr.disable()
+            # pr.disable()
             # print(
             #     "time needed for live prep of training data: "
             #     f"{timeit.default_timer() - start_t:.3f}",
             # )
-            pr.print_stats(sort='time')
+            # pr.print_stats(sort="time")
             end_time = timeit.default_timer()
-            print(f'time needed for post-proc calcs: {end_time - sample_patch_time:.3f}')
-            print(f'total time: {end_time - start_t:.3f}')
-            input()
+            print(
+                f"time needed for post-proc calcs: {end_time - sample_patch_time:.3f}"
+            )
+            print(f"total time: {end_time - start_t:.3f}")
+            # input()
             return [X], [prob, dist], num_instances
         return X, Y

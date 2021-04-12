@@ -1,7 +1,8 @@
-from re import split
 from csbdeep.utils import _raise
 import cv2
 import numpy as np
+from splinedist.constants import DEVICE
+from torch import tensor
 
 import matplotlib.pyplot as plt
 
@@ -104,7 +105,6 @@ class RotationHelper:
             self.aabb_center,
             self.angleRad,
         )
-
         rotated_image = rotate_image(data[1], self.angle)[0]
         avg_egg_size = np.mean(np.unique(data[0], return_counts=True)[-1][1:])
         rotated_mask, bounds_post_rotation = rotate_image(
@@ -143,8 +143,8 @@ class RotationHelper:
         ]
         split_channels = split_by_channel(sub_img)
         return [
-            np.expand_dims(sub_mask.astype(np.uint8), axis=0),
-            *[np.expand_dims(sc, axis=0) for sc in split_channels],
+            tensor(np.expand_dims(sub_mask.astype(np.uint8), axis=0)).float().to(DEVICE),
+            *[tensor(np.expand_dims(sc, axis=0)).float().to(DEVICE) for sc in split_channels],
         ]
 
     def rotate_point(self, pt, center, angle):

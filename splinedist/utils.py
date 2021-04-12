@@ -1,12 +1,15 @@
-import os
-import platform
 from csbdeep.utils import _raise
 import cv2
 import numpy as np
+import os
+import platform
 from scipy.ndimage.morphology import distance_transform_edt, binary_fill_holes
 from scipy.ndimage.measurements import find_objects
 from skimage.measure import regionprops
 import spline_generator as sg
+from splinedist.constants import DEVICE
+import torch
+from typing import Union
 import warnings
 
 has_cv2_v4 = cv2.__version__.startswith("4")
@@ -156,6 +159,59 @@ def normalize_grid(grid, n):
                 grid=grid, n=n
             )
         )
+
+
+def percentile(t: torch.tensor, q: float) -> Union[int, float]:
+    """
+    Return the ``q``-th percentile of the flattened input tensor's data.
+
+    CAUTION:
+     * Needs PyTorch >= 1.1.0, as ``torch.kthvalue()`` is used.
+     * Values are not interpolated, which corresponds to
+       ``numpy.percentile(..., interpolation="nearest")``.
+
+    :param t: Input tensor.
+    :param q: Percentile to compute, which must be between 0 and 100 inclusive.
+    :return: Resulting value (scalar).
+    """
+    # Note that ``kthvalue()`` works one-based, i.e. the first sorted value
+    # indeed corresponds to k=1, not k=0! Use float(q) instead of q directly,
+    # so that ``round()`` returns an integer, even if q is a np.float32.
+    k = 1 + round(0.01 * float(q) * (t.numel() - 1))
+    result = t.reshape(-1).kthvalue(k).values.item()
+    return result
+
+
+def normalize(x, pmin=3, pmax=99.8, ind_norm=True, clip=False, eps=1e-20):
+    """Percentile-based image normalization."""
+    if not ind_norm:
+        raise NotImplementedError
+    try:
+        mi = torch.stack(
+            [torch.quantile(x[:, :, i], pmin / 100) for i in range(x.shape[-1])]
+        )
+        ma = torch.stack(
+            [torch.quantile(x[:, :, i], pmax / 100) for i in range(x.shape[-1])]
+        )
+
+    except AttributeError:
+        mi = torch.tensor([percentile(x[:, :, i], pmin) for i in range(x.shape[-1])]).float().to(DEVICE)
+        ma = torch.tensor([percentile(x[:, :, i], pmax) for i in range(x.shape[-1])]).float().to(DEVICE)
+    return normalize_mi_ma(x, mi, ma, clip=clip, eps=eps)
+
+
+def normalize_mi_ma(x, mi, ma, clip=False, eps=1e-20):
+    try:
+        import numexpr
+
+        x = numexpr.evaluate("(x - mi) / ( ma - mi + eps )")
+    except ImportError:
+        x = (x - mi) / (ma - mi + eps)
+
+    if clip:
+        x = torch.clamp(x, 0, 1)
+
+    return x
 
 
 def fill_label_holes(lbl_img, **kwargs):

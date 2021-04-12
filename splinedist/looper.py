@@ -68,6 +68,8 @@ class Looper:
                 augmenter=self.augmenter,
                 **self.data_kwargs,
             )
+            print('training batch sze:', self.config.train_batch_size)
+            print('num samples per epoch:', self.n_samples_per_epoch)
         else:
             self.steps_per_epoch = (
                 self.n_samples_per_epoch / self.config.validation_batch_size
