@@ -16,6 +16,7 @@ class Config:
         self.contoursize_max = (
             contoursize_max if contoursize_max is None else int(contoursize_max)
         )
+        self.deform_sigma = float(self.set_conf_param("deform_sigma"))
         self.grid = normalize_grid(self.set_conf_param("grid_subsampling_factor"), 2)
         self.lr_reduct_factor = self.set_conf_param("lr_reduct_factor")
         self.lr_patience = self.set_conf_param("lr_patience")
@@ -34,6 +35,9 @@ class Config:
         self.train_shape_completion = self.set_conf_param("train_shape_completion")
         self.train_steps_per_epoch = self.set_conf_param("train_steps_per_epoch")
         self.validation_batch_size = self.set_conf_param("validation_batch_size")
+        self.validation_steps_per_epoch = self.set_conf_param(
+            "validation_steps_per_epoch"
+        )
 
         # default config (can be overwritten by kwargs below)
         if self.backbone == BackboneTypes.unet:

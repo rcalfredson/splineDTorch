@@ -1,7 +1,7 @@
 {
-    "backbone": "fcrn_a",
+    "backbone": "unet",
+    "deform_sigma": 6,
     "train_epochs": 400,
-    "train_learning_rate": 0.0003,
     "train_steps_per_epoch": 100,
     "validation_batch_size": 4,
     "validation_steps_per_epoch": 100

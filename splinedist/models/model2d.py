@@ -1,5 +1,6 @@
 from collections import namedtuple
 import os
+import timeit
 
 from splinedist.models.backbone_types import BackboneTypes
 from csbdeep.data import Normalizer, NoNormalizer, Resizer, NoResizer
@@ -12,7 +13,7 @@ from splinedist.config import Config
 from splinedist.constants import DEVICE
 from splinedist.geometry.geom2d import dist_to_coord, polygons_to_label
 from splinedist.models.fcrn import FCRN_A
-from splinedist.models.unet_block import UNet
+from splinedist.models.unet_block import UNet, UNetFromTF
 from splinedist.nms import non_maximum_suppression
 from splinedist.utils import _is_power_of_2, data_dir
 import torch
@@ -203,6 +204,7 @@ class SplineDist2D(nn.Module):
         self.add_subsampling_layers()
         if self.config.backbone == BackboneTypes.unet:
             self.backbone_block = UNet(32, 1, bilinear=False)
+            # self.backbone_block = UNetFromTF(32, 1)
         elif self.config.backbone == BackboneTypes.fcrn_a:
             self.backbone_block = FCRN_A(2, 32)
         self.add_post_backbone_block()
@@ -416,6 +418,7 @@ class SplineDist2D(nn.Module):
         show_tile_progress=True,
         **predict_kwargs
     ):
+        # total_cuda_time = 0
         if n_tiles is None:
             n_tiles = [1] * img.ndim
         try:
@@ -449,8 +452,11 @@ class SplineDist2D(nn.Module):
         x = resizer.before(x, axes_net, axes_net_div_by)
 
         def predict_direct(tile: np.ndarray):
+            # nonlocal total_cuda_time
+            # start_t = timeit.default_timer()
             tile = tile[np.newaxis]
             prob, dist = self(torch.from_numpy(tile).permute(0, 3, 1, 2).cuda())
+            # total_cuda_time += timeit.default_timer() - start_t
             return prob[0].permute(1, 2, 0), dist[0].permute(1, 2, 0)
 
         if np.prod(n_tiles) > 1:
@@ -512,12 +518,16 @@ class SplineDist2D(nn.Module):
         else:
             prob, dist = predict_direct(x)
 
-        prob = resizer.after(prob, axes_net).cpu().detach().numpy()
-        dist = resizer.after(dist, axes_net).cpu().detach().numpy()
+        # start_t = timeit.default_timer()
+        prob = resizer.after(prob, axes_net)
+        dist = resizer.after(dist, axes_net)
+        # total_cuda_time += timeit.default_timer() - start_t
+        prob = prob.cpu().detach().numpy()
+        dist = dist.cpu().detach().numpy()
 
         prob = np.take(prob, 0, axis=channel)
         dist = np.moveaxis(dist, channel, -1)
-
+        # print('total cuda time:', total_cuda_time)
         return prob, dist
 
     def predict_instances(
@@ -574,6 +584,7 @@ class SplineDist2D(nn.Module):
             a dictionary with the details (coordinates, etc.) of all remaining polygons/polyhedra.
 
         """
+        # start_t = timeit.default_timer()
         if predict_kwargs is None:
             predict_kwargs = {}
         if nms_kwargs is None:
@@ -605,6 +616,7 @@ class SplineDist2D(nn.Module):
             overlap_label=overlap_label,
             **nms_kwargs
         )
+        # print('total predict time:', timeit.default_timer() - start_t)
         return finals
 
     def _instances_from_prediction(

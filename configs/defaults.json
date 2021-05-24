@@ -1,14 +1,15 @@
 {
     "axes": "YXC",
     "backbone": "unet",
-    "n_control_points": 8,
-    "n_dim": 2,
+    "deform_sigma": 0,
     "grid_subsampling_factor": [
         2,
         2
     ],
     "lr_reduct_factor": 0.5,
     "lr_patience": 20,
+    "n_control_points": 8,
+    "n_dim": 2,
     "train_background_reg": 1e-4,
     "train_batch_size": 4,
     "train_completion_crop": 32,
@@ -22,6 +23,7 @@
         160
     ],
     "train_shape_completion": false,
-    "train_steps_per_epoch": 100,
-    "validation_batch_size": 10
+    "train_steps_per_epoch": null,
+    "validation_batch_size": 10,
+    "validation_steps_per_epoch": null
 }

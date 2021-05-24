@@ -4,11 +4,16 @@
 import argparse
 import copy
 from csbdeep.utils import normalize
+import cv2
 from glob import glob
 import json
+import matplotlib
+
+matplotlib.use("agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+from pathlib import Path
 from PIL import Image
 from splinedist.config import Config
 from splinedist.models.model2d import SplineDist2D
@@ -34,8 +39,14 @@ p.add_argument(
     " configs/defaults.json",
     default="configs/defaults.json",
 )
-p.add_argument('--legacy', action='store_true', help='Use legacy weight names (for loading old nets)')
-p.add_argument('--vis', action='store_true', help='Display visualization of the predicted eggs')
+p.add_argument(
+    "--legacy",
+    action="store_true",
+    help="Use legacy weight names (for loading old nets)",
+)
+p.add_argument(
+    "--vis", action="store_true", help="Display visualization of the predicted eggs"
+)
 opts = p.parse_args()
 
 axis_norm = (0, 1)
@@ -60,6 +71,18 @@ n_channel = 1 if X[0].ndim == 2 else X[0].shape[-1]
 models = glob(opts.models)
 config = Config(opts.config, n_channel)
 
+
+def create_and_save_img(img_gen_func):
+    fig = plt.figure()
+    plt.imshow(img_show, cmap="gray")
+    img_gen_func()
+    plt.gca().set_axis_off()
+    current_figsize = fig.get_size_inches()
+    fig.set_size_inches(current_figsize[0] * 2, current_figsize[1] * 2)
+    plt.savefig("debug/temp.png", bbox_inches="tight", pad_inches=0, dpi=100)
+
+saved_error_examples = {}
+
 for model_path in models:
     true_values = []
     predicted_values = []
@@ -71,39 +94,101 @@ for model_path in models:
     if opts.legacy:
         state_dict_new = copy.deepcopy(loaded_model)
         for key in loaded_model:
-            if 'unet' in key:
-                state_dict_new[key.replace('unet', 'backbone')] = state_dict_new.pop(key)
+            if "unet" in key:
+                state_dict_new[key.replace("unet", "backbone")] = state_dict_new.pop(
+                    key
+                )
         model.load_state_dict(state_dict_new)
     else:
         model.load_state_dict(loaded_model)
     for i, img in enumerate(X):
         predict_start = timeit.default_timer()
-        img = normalize(img, 1, 99.8, axis=axis_norm)
+        img_basename = os.path.basename(X_names[i])
+        # img = normalize(img, 1, 99.8, axis=axis_norm)
+        img = img.astype(np.float32)
         labels, details = model.predict_instances(img)
         num_predicted = len(details["points"])
         num_labeled = np.sum(Y[i])
         print("img %i of %i" % (i, tot_num_examples))
         print("num predicted:", num_predicted)
         print("num labeled:", num_labeled)
-        errors_by_img[os.path.basename(X_names[i])] = abs(num_labeled - num_predicted)
+        abs_err = abs(num_labeled - num_predicted)
+        errors_by_img[os.path.basename(X_names[i])] = abs_err
         predicted_values.append(num_predicted)
         true_values.append(num_labeled)
-        if opts.vis:
-            plt.figure(figsize=(13, 10))
+        if opts.vis and abs_err > 6 and (img_basename not in saved_error_examples or saved_error_examples[img_basename]['abs_err'] < abs_err):
+            # create parent dir for error examples
+            model_dir = Path(model_path).parent
+            error_dir = os.path.join(model_dir, 'error_examples')
+            Path(error_dir).mkdir(parents=True, exist_ok=True)
+            gt_pts = np.where(Y[i] > 0)
+            # fig = plt.figure()
             img_show = img if img.ndim == 2 else img[..., 0]
             coord, points, prob = details["coord"], details["points"], details["prob"]
-            plt.subplot(121)
-            plt.imshow(img_show, cmap="gray")
-            plt.axis("off")
-            a = plt.axis()
-            _draw_polygons(coord, points, prob, show_dist=True)
-            plt.axis(a)
-            # plt.subplot(122)
             # plt.imshow(img_show, cmap="gray")
-            # plt.axis("off")
-            # plt.imshow(lbl, cmap=lbl_cmap, alpha=0.5)
-            plt.tight_layout()
-            plt.show()
+            # _draw_polygons(coord, points, prob, show_dist=True)
+            for fname in ('temp.png', 'debug/temp.png',):
+                try:
+                    os.unlink(fname)
+                except FileNotFoundError: pass
+
+            def prediction_renderer():
+                _draw_polygons(coord, points, prob, show_dist=True)
+
+            create_and_save_img(prediction_renderer)
+            predictions = cv2.imread("debug/temp.png")
+            plt.close("all")
+
+            def gt_renderer():
+                plt.scatter(gt_pts[1], gt_pts[0], 4, [[1, 0, 0.157]])
+
+            create_and_save_img(gt_renderer)
+            ground_truth = cv2.imread("debug/temp.png")
+            # cv2.imshow("pred", predictions)
+            # cv2.imshow("gt", ground_truth)
+            # cv2.waitKey(0)
+
+            if (
+                ground_truth.shape[0] >= ground_truth.shape[1]
+            ):  # the images are taller than they are wide
+                combined_img = np.zeros(
+                    (
+                        max(ground_truth.shape[0], predictions.shape[0]),
+                        ground_truth.shape[1] + predictions.shape[1] + 10,
+                        3
+                    )
+                )
+                combined_img[:, : ground_truth.shape[1]] = ground_truth
+                combined_img[:, ground_truth.shape[1] + 10 :] = predictions
+            else:
+                combined_img = np.zeros(
+                    (
+                        ground_truth.shape[0] + predictions.shape[0] + 10,
+                        max(ground_truth.shape[1], predictions.shape[1]),
+                        3
+                    )
+                )
+                combined_img[: ground_truth.shape[0], :] = ground_truth
+                combined_img[ground_truth.shape[0] + 10:, :] = predictions
+            # save the combined image with a filename containing the
+            # original filename AND the number of predicted and labeled eggs.
+            # also need to save the name of the model that was run...
+            # will all that info make the filename too long?
+            # what alternative is there?
+            # perhaps just to save one representative error example per image being checked.
+            # we keep a mapping of image name to level of error, and if the previous was smaller
+            # than the current error, then we overwrite. This seems to make sense
+            # as far as keeping the storage footprint smaller.
+            # think this is now implemented...
+            if img_basename in saved_error_examples:
+                os.unlink(saved_error_examples[img_basename]['path'])
+            save_path = os.path.join(error_dir, '%s_%iabs_%s_%ipredicted_%ilabeled.png'%(
+                img_basename.split(".jpg")[0], abs_err, os.path.basename(model_path), num_predicted, num_labeled))
+            saved_error_examples[os.path.basename(X_names[i])] = {'path': save_path, 'abs_err': abs_err}
+            cv2.imwrite( save_path,
+                combined_img
+            )
+
         print("time per prediction:", timeit.default_timer() - predict_start)
     # if it's running in batch mode, need to save the final error stats
     # for each model. Keep them in the same JSON file.

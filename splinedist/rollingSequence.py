@@ -23,7 +23,7 @@ class RollingSequence:
         self.shuffle = bool(shuffle)
         self.index_gen = rng.permutation if self.shuffle else np.arange
         self.index_map = {}
-        self.indices_returned = []
+        # self.indices_returned = []
 
     def __len__(self):
         return self.length
@@ -34,9 +34,9 @@ class RollingSequence:
         else:
             return self.index_map.setdefault(loop, self.index_gen(self.data_size))
 
-    def on_epoch_end(self):
+    def reset_index_map(self):
         self.index_map = {}
-        self.indices_returned = []
+        # self.indices_returned = []
 
     def __iter__(self):
         for i in range(len(self)):
@@ -53,7 +53,7 @@ class RollingSequence:
             _loop += 1
             index = np.concatenate((index, self._index(_loop)))
         # print(f"### - batch({i:02}) -> {tuple(index[sl])}", flush=True)
-        self.indices_returned += list(index[sl])
+        # self.indices_returned += list(index[sl])
         return index[sl]
 
     def __getitem__(self, i):

@@ -1,3 +1,4 @@
+from datetime import datetime
 from csbdeep.utils import _raise
 import cv2
 import numpy as np
@@ -13,6 +14,7 @@ from typing import Union
 import warnings
 
 has_cv2_v4 = cv2.__version__.startswith("4")
+onload_ts = datetime.now()
 
 
 def _is_power_of_2(i):
@@ -110,8 +112,14 @@ def wrapIndex(t, k, M, half_support):
     return wrappedT
 
 
-def data_dir():
-    return os.path.join("data_by_host", platform.node())
+
+
+def data_dir(must_exist=True):
+    prospective_dir = os.path.join("data_by_host", f"{platform.node()}_{onload_ts}".replace(":", '-'))
+    if (must_exist and os.path.isdir(prospective_dir)) or not must_exist:
+        return prospective_dir
+    elif must_exist and not os.path.isdir(prospective_dir):
+        return './'
 
 
 def phi_generator(M, contoursize_max, debug=False):

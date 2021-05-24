@@ -2,7 +2,8 @@ from splinedist.rotation import rotate_image
 import cv2
 import numpy as np
 
-cv2.setNumThreads(8)
+cv2.setNumThreads(-1)
+print('num threads:', cv2.getNumThreads())
 
 testArr = np.random.rand(100, 100, 3)
 while True:

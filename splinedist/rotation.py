@@ -1,8 +1,7 @@
 from csbdeep.utils import _raise
 import cv2
+import elasticdeform
 import numpy as np
-from splinedist.constants import DEVICE
-from torch import tensor
 
 import matplotlib.pyplot as plt
 
@@ -97,54 +96,57 @@ class RotationHelper:
 
     def get_random_rot_patch(self, data):
         self.get_rotation_angle()
-        corner_point = self.rotate_point(
-            (
-                self.aabb_center[0] - 0.5 * self.patch_size[0],
-                self.aabb_center[1] - 0.5 * self.patch_size[1],
+        rand_y = np.random.randint(0, self.height - self.patch_size[0])
+        rand_x = np.random.randint(0, self.width - self.patch_size[1])
+        deformed_image, deformed_mask = elasticdeform.deform_random_grid(
+            [data[1], data[0]],
+            sigma=6,
+            points=3,
+            axis=(0, 1),
+            order=[3, 0],
+            crop=(
+                slice(int(rand_y), int(rand_y + self.patch_size[0])),
+                slice(int(rand_x), int(rand_x + self.patch_size[1])),
             ),
-            self.aabb_center,
-            self.angleRad,
+            rotate=self.angle,
         )
-        rotated_image = rotate_image(data[1], self.angle)[0]
-        avg_egg_size = np.mean(np.unique(data[0], return_counts=True)[-1][1:])
-        rotated_mask, bounds_post_rotation = rotate_image(
-            data[0], self.angle, use_linear=False
-        )
-        rotated_corner_point = self.rotate_point(
-            corner_point, (self.height / 2, self.width / 2), -self.angleRad
-        )
-        rotated_corner_point = list(rotated_corner_point)
-        rotated_corner_point[0] += 0.5 * (bounds_post_rotation[0] - self.height)
-        rotated_corner_point[1] += 0.5 * (bounds_post_rotation[1] - self.width)
-        rcp = rotated_corner_point
-        sub_mask = rotated_mask[
-            int(rcp[0]) : int(rcp[0] + self.patch_size[0]),
-            int(rcp[1]) : int(rcp[1] + self.patch_size[1]),
-        ]
-        mask_border_vals = set(
-            np.concatenate(
-                (
-                    sub_mask[[0, sub_mask.shape[0] - 1], :].ravel(),
-                    sub_mask[1:-1, [0, sub_mask.shape[1] - 1]].ravel(),
+        # print('image:', deformed_image.astype(np.uint8))
+        # print('mask:', deformed_mask)
+        # cv2.imshow('deformed image', cv2.resize(deformed_image.astype(np.uint8), (0, 0), fx=2.5, fy=2.5))
+        # cv2.imshow('deformed mask', cv2.resize(deformed_mask, (0, 0), fx=2.5, fy=2.5))
+        # cv2.waitKey(0)
+        unique_vals = np.unique(deformed_mask, return_counts=True)[-1][1:]
+        if len(unique_vals) == 0:
+            skip_frag_checks = True
+        else:
+            skip_frag_checks = False
+        if not skip_frag_checks:
+            avg_egg_size = np.mean(np.unique(deformed_mask, return_counts=True)[-1][1:])
+
+        sub_mask = deformed_mask
+        sub_img = deformed_image
+        if not skip_frag_checks:
+            mask_border_vals = set(
+                np.concatenate(
+                    (
+                        sub_mask[[0, sub_mask.shape[0] - 1], :].ravel(),
+                        sub_mask[1:-1, [0, sub_mask.shape[1] - 1]].ravel(),
+                    )
                 )
             )
-        )
-        egg_indices, egg_sizes = np.unique(sub_mask, return_counts=True)
-        too_small_indices = [
-            egg_indices[i]
-            for i in range(len(egg_indices))
-            if egg_sizes[i] <= 0.3 * avg_egg_size and egg_indices[i] in mask_border_vals
-        ]
-        too_small_mask = np.isin(sub_mask, too_small_indices)
-        sub_mask[too_small_mask] = 0
-        sub_img = rotated_image[
-            int(rcp[0]) : int(rcp[0] + self.patch_size[0]),
-            int(rcp[1]) : int(rcp[1] + self.patch_size[1]),
-        ]
+            egg_indices, egg_sizes = np.unique(sub_mask, return_counts=True)
+            too_small_indices = [
+                egg_indices[i]
+                for i in range(len(egg_indices))
+                if egg_sizes[i] <= 0.3 * avg_egg_size
+                and egg_indices[i] in mask_border_vals
+            ]
+            too_small_mask = np.isin(sub_mask, too_small_indices)
+            sub_mask[too_small_mask] = 0
         split_channels = split_by_channel(sub_img)
         return [
-            tensor(np.expand_dims(sub_mask.astype(np.uint8), axis=0)).float().to(DEVICE),
-            *[tensor(np.expand_dims(sc, axis=0)).float().to(DEVICE) for sc in split_channels],
+            np.expand_dims(sub_mask.astype(np.uint8), axis=0),
+            *[np.expand_dims(sc, axis=0) for sc in split_channels],
         ]
 
     def rotate_point(self, pt, center, angle):

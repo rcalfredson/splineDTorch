@@ -1,0 +1,8 @@
+{
+    "backbone": "fcrn_a",
+    "train_epochs": 1,
+    "train_learning_rate": 0.0003,
+    "train_steps_per_epoch": 1,
+    "validation_batch_size": 4,
+    "validation_steps_per_epoch": 1
+}

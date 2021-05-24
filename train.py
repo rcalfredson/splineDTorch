@@ -1,10 +1,11 @@
 """Main script used to train networks."""
 import argparse
+import elasticdeform
 from splinedist.constants import DEVICE
 from matplotlib import pyplot as plt
 from numpy.core.defchararray import mod
 import torch
-from csbdeep.utils import normalize as normalize_old
+from csbdeep.utils import normalize
 import datetime
 from glob import glob
 import json
@@ -12,6 +13,8 @@ import numpy as np
 import os
 from pathlib import Path
 import platform
+import shutil
+import signal
 from splinedist.config import Config
 from splinedist.looper import Looper
 from splinedist.models.model2d import SplineDist2D
@@ -21,7 +24,6 @@ from splinedist.utils import (
     fill_label_holes,
     get_contoursize_max,
     grid_generator,
-    normalize,
     phi_generator,
 )
 import sys
@@ -31,19 +33,21 @@ from tqdm import tqdm
 
 import cv2
 
-## temp command: python trainByBatchLinux.py 10 "--config configs/fcrn_backbone.json --plot --val_interval 2"
+# python train.py --config configs\fcrn_backbone.json --plot --left_col_plots scatter --val_interval 2
+## temp command: python trainByBatchLinux.py 10 "--config configs/unet_with_deform.json --plot --val_interval 4"
+# eval command: python eval_via_pt_data.py '/media/Synology3/Robert/objects_counting_dmap/egg_source/heldout_robert_WT_5' '/media/Synology3/Robert/splineDTorch/saved_models/unet_deform_sigma=6/complete_nets'
 
 sys_type = platform.system()
+win_drive_letter = "P"
+if sys_type == "Windows" and "Dell2" in platform.node():
+    win_drive_letter = "R"
 DATA_BASE_DIR = {
-    "Windows": "P:/Robert/splineDist/data/egg",
+    "Windows": f"{win_drive_letter}:/Robert/splineDist/data/egg",
     "Linux": "/media/Synology3/Robert/splineDist/data/egg",
 }[sys_type]
 train_ts = datetime.datetime.now()
 
 lr_history = {}
-lr_history_filename = (
-    f"splinedist_lr_history" f"_{platform.node()}_{train_ts}.json".replace(":", "-")
-)
 
 
 def options():
@@ -79,20 +83,20 @@ def options():
 
 
 opts = options()
-if not os.path.isdir(data_dir()):
-    Path(data_dir()).mkdir(parents=True, exist_ok=True)
+if not os.path.isdir(data_dir(must_exist=False)):
+    Path(data_dir(must_exist=False)).mkdir(parents=True, exist_ok=True)
 X = sorted(glob(os.path.join(DATA_BASE_DIR, "images/*.tif")))
 Y = sorted(glob(os.path.join(DATA_BASE_DIR, "masks/*.tif")))
 assert all(Path(x).name == Path(y).name for x, y in zip(X, Y))
-X = list(map(imread, X[:10]))
-Y = list(map(imread, Y[:10]))
+X = list(map(imread, X))
+Y = list(map(imread, Y))
 n_channel = 1 if X[0].ndim == 2 else X[0].shape[-1]
-ind_norm = True  # normalize channels independently
+axis_norm = (0, 1)  # normalize channels independently
 
 if n_channel > 1:
     print(
         "Normalizing image channels %s."
-        % ("independently" if ind_norm else "jointly")
+        % ("jointly" if axis_norm is None or 2 in axis_norm else "independently")
     )
     sys.stdout.flush()
 
@@ -133,8 +137,15 @@ phi_generator(M, int(config.contoursize_max))
 grid_generator(M, config.train_patch_size, config.grid)
 
 
-def write_lr_history():
-    with open(lr_history_filename, "w") as my_f:
+def write_lr_history(config: Config):
+    if not hasattr(config, "lr_history_filename"):
+        setattr(
+            config,
+            "lr_history_filename",
+            f"splinedist_{config.backbone.name}_lr_history"
+            f"_{platform.node()}_{train_ts}.json".replace(":", "-"),
+        )
+    with open(config.lr_history_filename, "w") as my_f:
         json.dump(lr_history, my_f, ensure_ascii=False, indent=4)
 
 
@@ -142,13 +153,13 @@ def random_fliprot(img: torch.Tensor, mask: torch.Tensor):
     assert img.ndim >= mask.ndim
     axes = tuple(range(mask.ndim))
     perm = tuple(np.random.permutation(axes))
-    img = img.permute(perm + tuple(range(mask.ndim, img.ndim)))
-    mask = mask.permute(perm)
+    img = img.transpose(perm + tuple(range(mask.ndim, img.ndim)))
+    mask = mask.transpose(perm)
     for ax in axes:
         if np.random.rand() > 0.5:
-            img = torch.flip(img, dims=(ax,))
-            mask = torch.flip(mask, dims=(ax,))
-    img = normalize(img, 1, 99.8, ind_norm=ind_norm)
+            img = np.flip(img, axis=ax)
+            mask = np.flip(mask, axis=ax)
+    img = normalize(img, 1, 99.8, axis=axis_norm)
     return img, mask
 
 
@@ -166,7 +177,7 @@ def augmenter(x, y):
     x = random_intensity_change(x)
     # add some gaussian noise
     sig = 0.02 * np.random.uniform(0, 1)
-    x = x + sig * torch.normal(0, 1, size=x.shape).float().to(DEVICE)
+    x = x + sig * np.random.normal(0, 1, x.shape)
     return x, y
 
 
@@ -221,7 +232,7 @@ for i, epoch in enumerate(range(config.train_epochs)):
     if len(lr_history) == 0 or lr_history["last"] != current_lr:
         lr_history["last"] = current_lr
         lr_history[f"epoch_{i+1}"] = current_lr
-        write_lr_history()
+        write_lr_history(config)
     start_time = timeit.default_timer()
     print(f"Epoch {epoch + 1}\n")
 
@@ -258,10 +269,13 @@ if opts.export_at_end:
     torch.save(
         model.state_dict(),
         f"splinedist_{config.backbone.name}_{config.train_epochs}epochs_"
-        + f"{platform.node()}_{datetime.datetime.now()}.pth".replace(":", "-"),
+        + f"{platform.node()}_{train_ts}.pth".replace(":", "-"),
     )
     plt.savefig(
         f"splinedist_{config.backbone.name}_{config.train_epochs}epochs_"
-        + f"{platform.node()}_{datetime.datetime.now()}.png".replace(":", "-")
+        + f"{platform.node()}_{train_ts}.png".replace(":", "-")
     )
+
+shutil.rmtree(data_dir())
 print(f"[Training done] Best result: {current_best}")
+os.kill(os.getpid(), signal.SIGTERM)
