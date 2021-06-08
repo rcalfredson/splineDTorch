@@ -22,6 +22,7 @@ class Config:
         self.lr_patience = self.set_conf_param("lr_patience")
         self.n_channel_in = n_channel_in
         self.n_dim = int(self.set_conf_param("n_dim"))
+        self.skip_empties = self.set_conf_param('skip_empties')
         self.n_params = 2 * int(self.set_conf_param("n_control_points"))
         self.train_background_reg = int(self.set_conf_param("train_background_reg"))
         self.train_batch_size = int(self.set_conf_param("train_batch_size"))
@@ -40,7 +41,7 @@ class Config:
         )
 
         # default config (can be overwritten by kwargs below)
-        if self.backbone == BackboneTypes.unet:
+        if self.backbone in (BackboneTypes.unet_full, BackboneTypes.unet_reduced):
             self.n_depth = 3
             self.kernel_size = 3, 3
             self.n_filter_base = 32

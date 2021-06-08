@@ -238,6 +238,7 @@ class SplineDistData2D(SplineDistDataBase):
         grid=(1, 1),
         shape_completion=False,
         augmenter=None,
+        skip_empties=False,
         foreground_prob=0,
         n_samples=1,
         skip_dist_prob_calc=False,
@@ -265,6 +266,7 @@ class SplineDistData2D(SplineDistDataBase):
 
         self.sd_mode = "opencl" if self.use_gpu else "cpp"
 
+        self.skip_empties = skip_empties
         self.contoursize_max = contoursize_max
         self.n_samples = n_samples
         self.skip_dist_prob_calc = skip_dist_prob_calc
@@ -280,13 +282,12 @@ class SplineDistData2D(SplineDistDataBase):
         # random rotation sample_patches
 
         self.arrays = [
-            sample_patches_rot((self.Y[k], self.X[k]), patch_size=self.patch_size)
+            sample_patches_rot((self.Y[k], self.X[k]), patch_size=self.patch_size, skip_empties=self.skip_empties)
             for k in idx
         ]
         np.set_printoptions(threshold=sys.maxsize)
         with open('debug_mask.txt', 'w') as f:
             print('deformed mask:', self.arrays[0][0], file=f)
-        input('waiting...')
         # sample_patch_time = timeit.default_timer()
         # print(f"time spent sampling patches: {sample_patch_time - start_t:.3f}")
         # pr = cProfile.Profile()

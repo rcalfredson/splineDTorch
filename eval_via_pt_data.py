@@ -45,9 +45,15 @@ p.add_argument(
     help="Use legacy weight names (for loading old nets)",
 )
 p.add_argument(
+    "--dest_dir",
+    help="Folder in which to save error results, given as a path relative to the"
+    " folder containing the network being evaluated (will be created if needed).",
+)
+p.add_argument(
     "--vis", action="store_true", help="Display visualization of the predicted eggs"
 )
 opts = p.parse_args()
+
 
 axis_norm = (0, 1)
 
@@ -80,6 +86,7 @@ def create_and_save_img(img_gen_func):
     current_figsize = fig.get_size_inches()
     fig.set_size_inches(current_figsize[0] * 2, current_figsize[1] * 2)
     plt.savefig("debug/temp.png", bbox_inches="tight", pad_inches=0, dpi=100)
+
 
 saved_error_examples = {}
 
@@ -116,10 +123,17 @@ for model_path in models:
         errors_by_img[os.path.basename(X_names[i])] = abs_err
         predicted_values.append(num_predicted)
         true_values.append(num_labeled)
-        if opts.vis and abs_err > 6 and (img_basename not in saved_error_examples or saved_error_examples[img_basename]['abs_err'] < abs_err):
+        if (
+            opts.vis
+            and abs_err > 6
+            and (
+                img_basename not in saved_error_examples
+                or saved_error_examples[img_basename]["abs_err"] < abs_err
+            )
+        ):
             # create parent dir for error examples
             model_dir = Path(model_path).parent
-            error_dir = os.path.join(model_dir, 'error_examples')
+            error_dir = os.path.join(model_dir, "error_examples")
             Path(error_dir).mkdir(parents=True, exist_ok=True)
             gt_pts = np.where(Y[i] > 0)
             # fig = plt.figure()
@@ -127,10 +141,14 @@ for model_path in models:
             coord, points, prob = details["coord"], details["points"], details["prob"]
             # plt.imshow(img_show, cmap="gray")
             # _draw_polygons(coord, points, prob, show_dist=True)
-            for fname in ('temp.png', 'debug/temp.png',):
+            for fname in (
+                "temp.png",
+                "debug/temp.png",
+            ):
                 try:
                     os.unlink(fname)
-                except FileNotFoundError: pass
+                except FileNotFoundError:
+                    pass
 
             def prediction_renderer():
                 _draw_polygons(coord, points, prob, show_dist=True)
@@ -155,7 +173,7 @@ for model_path in models:
                     (
                         max(ground_truth.shape[0], predictions.shape[0]),
                         ground_truth.shape[1] + predictions.shape[1] + 10,
-                        3
+                        3,
                     )
                 )
                 combined_img[:, : ground_truth.shape[1]] = ground_truth
@@ -165,11 +183,11 @@ for model_path in models:
                     (
                         ground_truth.shape[0] + predictions.shape[0] + 10,
                         max(ground_truth.shape[1], predictions.shape[1]),
-                        3
+                        3,
                     )
                 )
                 combined_img[: ground_truth.shape[0], :] = ground_truth
-                combined_img[ground_truth.shape[0] + 10:, :] = predictions
+                combined_img[ground_truth.shape[0] + 10 :, :] = predictions
             # save the combined image with a filename containing the
             # original filename AND the number of predicted and labeled eggs.
             # also need to save the name of the model that was run...
@@ -181,13 +199,23 @@ for model_path in models:
             # as far as keeping the storage footprint smaller.
             # think this is now implemented...
             if img_basename in saved_error_examples:
-                os.unlink(saved_error_examples[img_basename]['path'])
-            save_path = os.path.join(error_dir, '%s_%iabs_%s_%ipredicted_%ilabeled.png'%(
-                img_basename.split(".jpg")[0], abs_err, os.path.basename(model_path), num_predicted, num_labeled))
-            saved_error_examples[os.path.basename(X_names[i])] = {'path': save_path, 'abs_err': abs_err}
-            cv2.imwrite( save_path,
-                combined_img
+                os.unlink(saved_error_examples[img_basename]["path"])
+            save_path = os.path.join(
+                error_dir,
+                "%s_%iabs_%s_%ipredicted_%ilabeled.png"
+                % (
+                    img_basename.split(".jpg")[0],
+                    abs_err,
+                    os.path.basename(model_path),
+                    num_predicted,
+                    num_labeled,
+                ),
             )
+            saved_error_examples[os.path.basename(X_names[i])] = {
+                "path": save_path,
+                "abs_err": abs_err,
+            }
+            cv2.imwrite(save_path, combined_img)
 
         print("time per prediction:", timeit.default_timer() - predict_start)
     # if it's running in batch mode, need to save the final error stats
@@ -216,7 +244,15 @@ for model_path in models:
     mean_rel_error_41plus = np.mean(
         abs_rel_errors[(abs_rel_errors != np.infty) & (true_values >= 41)]
     )
-    with open("%s_errors.json" % model_path, "w") as f:
+    if opts.dest_dir:
+        model_parent = Path(model_path).parent
+        error_dir = os.path.join(model_parent, opts.dest_dir)
+        Path(error_dir).mkdir(parents=True, exist_ok=True)
+        dest = os.path.join(error_dir,
+            f"{os.path.basename(model_path)}_errors.json")
+    else:
+        dest = "%s_errors.json" % model_path
+    with open(dest, "w") as f:
         json.dump(
             {
                 "mean_abs_error": mean_abs_error,

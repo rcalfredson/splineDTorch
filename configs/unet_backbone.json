@@ -1,5 +1,5 @@
 {
-    "backbone": "unet",
+    "backbone": "unet_full",
     "train_epochs": 400,
     "train_steps_per_epoch": 100,
     "validation_batch_size": 4,

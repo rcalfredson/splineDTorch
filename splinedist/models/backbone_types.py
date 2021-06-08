@@ -1,5 +1,6 @@
 from enum import Enum, auto
 
 class BackboneTypes(Enum):
-    unet = auto()
+    unet_full = auto()
+    unet_reduced = auto()
     fcrn_a = auto()

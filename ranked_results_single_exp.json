@@ -1,0 +1,54 @@
+[
+    [
+        "splinedist_unet_400epochs_NZXT-U_2021-04-21 21-52-34.079027",
+        4.594255293376391
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell2_2021-04-21 15-51-59.194773",
+        5.544419848039997
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-21 15-53-58.192825",
+        5.797852522447499
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell3_2021-04-21 22-43-15.912118",
+        6.054873336303181
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-21 23-02-55.061360",
+        6.084153686357053
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-21 23-22-28.977593",
+        6.3586318277838165
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-21 15-44-24.345637",
+        6.446791431575899
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-21 19-23-32.299137",
+        6.675417356877447
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell3_2021-04-21 15-57-47.862530",
+        6.6958884660166476
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-22 06-23-31.107600",
+        6.744650412064558
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-22 02-42-33.167443",
+        6.911821792374745
+    ],
+    [
+        "splinedist_unet_400epochs_NZXT-U_2021-04-21 15-49-48.758072",
+        8.174086392704327
+    ],
+    [
+        "splinedist_unet_400epochs_NZXT-U_2021-04-22 03-55-40.484243",
+        8.871520994163545
+    ]
+]

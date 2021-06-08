@@ -1,0 +1,5 @@
+configs/fcrn_backbone.json
+configs/unet_backbone.json
+configs/unet_reduced.json
+configs/unet_backbone.json
+configs/unet_backbone.json

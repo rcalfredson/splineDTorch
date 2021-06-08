@@ -72,6 +72,7 @@ class Looper:
                 length=self.steps_per_epoch,
                 n_samples=self.n_samples_per_img,
                 augmenter=self.augmenter,
+                skip_empties=self.config.skip_empties,
                 **self.data_kwargs,
             )
         else:
@@ -95,6 +96,7 @@ class Looper:
             n_samples=self.n_samples_per_img,
             skip_dist_prob_calc=True,
             augmenter=self.augmenter,
+            skip_empties=self.config.skip_empties,
             **self.data_kwargs,
         )
         data_val_source = _data_val[0]

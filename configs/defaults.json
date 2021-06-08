@@ -1,6 +1,6 @@
 {
     "axes": "YXC",
-    "backbone": "unet",
+    "backbone": "unet_full",
     "deform_sigma": 0,
     "grid_subsampling_factor": [
         2,
@@ -10,6 +10,7 @@
     "lr_patience": 20,
     "n_control_points": 8,
     "n_dim": 2,
+    "skip_empties": false,
     "train_background_reg": 1e-4,
     "train_batch_size": 4,
     "train_completion_crop": 32,

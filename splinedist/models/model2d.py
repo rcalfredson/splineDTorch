@@ -202,9 +202,10 @@ class SplineDist2D(nn.Module):
         super(SplineDist2D, self).__init__()
         self.config = config
         self.add_subsampling_layers()
-        if self.config.backbone == BackboneTypes.unet:
+        if self.config.backbone == BackboneTypes.unet_reduced:
+            self.backbone_block = UNetFromTF(32, 1)
+        elif self.config.backbone == BackboneTypes.unet_full:
             self.backbone_block = UNet(32, 1, bilinear=False)
-            # self.backbone_block = UNetFromTF(32, 1)
         elif self.config.backbone == BackboneTypes.fcrn_a:
             self.backbone_block = FCRN_A(2, 32)
         self.add_post_backbone_block()

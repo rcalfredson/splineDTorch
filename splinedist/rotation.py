@@ -48,7 +48,7 @@ def rotate_image(mat, angle, use_linear=True):
     return rotated_mat, (bound_h, bound_w)
 
 
-def sample_patches(data, patch_size):
+def sample_patches(data, patch_size, skip_empties=False):
     len(patch_size) == data[0].ndim or _raise(ValueError())
 
     if not all((a.shape[:2] == data[0].shape[:2] for a in data)):
@@ -65,7 +65,9 @@ def sample_patches(data, patch_size):
 
     # choose a random rotation angle
     rot_helper = RotationHelper(data[0].shape[0], data[0].shape[1], patch_size)
-    res = rot_helper.get_random_rot_patch(data)
+    res = None
+    res = rot_helper.get_random_rot_patch(data, skip_empties=skip_empties)
+        
     return res
 
 
@@ -94,22 +96,28 @@ class RotationHelper:
                 )
                 break
 
-    def get_random_rot_patch(self, data):
-        self.get_rotation_angle()
-        rand_y = np.random.randint(0, self.height - self.patch_size[0])
-        rand_x = np.random.randint(0, self.width - self.patch_size[1])
-        deformed_image, deformed_mask = elasticdeform.deform_random_grid(
-            [data[1], data[0]],
-            sigma=6,
-            points=3,
-            axis=(0, 1),
-            order=[3, 0],
-            crop=(
-                slice(int(rand_y), int(rand_y + self.patch_size[0])),
-                slice(int(rand_x), int(rand_x + self.patch_size[1])),
-            ),
-            rotate=self.angle,
-        )
+    def get_random_rot_patch(self, data, skip_empties=False):
+        deformed_mask = None
+        while type(deformed_mask) != np.ndarray:
+            self.get_rotation_angle()
+            rand_y = np.random.randint(0, self.height - self.patch_size[0])
+            rand_x = np.random.randint(0, self.width - self.patch_size[1])
+            deformed_image, deformed_mask = elasticdeform.deform_random_grid(
+                [data[1], data[0]],
+                sigma=6,
+                points=3,
+                axis=(0, 1),
+                order=[3, 0],
+                crop=(
+                    slice(int(rand_y), int(rand_y + self.patch_size[0])),
+                    slice(int(rand_x), int(rand_x + self.patch_size[1])),
+                ),
+                rotate=self.angle,
+            )
+            # how to check for empty patches? Could check if every element of the mask
+            # equals zero?
+            if skip_empties and not np.any(deformed_mask):
+                deformed_mask = None
         # print('image:', deformed_image.astype(np.uint8))
         # print('mask:', deformed_mask)
         # cv2.imshow('deformed image', cv2.resize(deformed_image.astype(np.uint8), (0, 0), fx=2.5, fy=2.5))
@@ -143,6 +151,11 @@ class RotationHelper:
             ]
             too_small_mask = np.isin(sub_mask, too_small_indices)
             sub_mask[too_small_mask] = 0
+        print('subimg:', sub_img)
+        print('submask:', sub_mask)
+        cv2.imshow('subimg', sub_img.astype(np.uint8))
+        cv2.imshow('submask', cv2.resize(sub_mask, (0, 0), fx=3, fy=3))
+        cv2.waitKey(0)
         split_channels = split_by_channel(sub_img)
         return [
             np.expand_dims(sub_mask.astype(np.uint8), axis=0),

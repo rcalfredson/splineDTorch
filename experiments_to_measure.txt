@@ -1,0 +1,4 @@
+saved_models/unet_backbone
+saved_models/unet_reduced_backbone
+saved_models/unet_deform_sigma=0
+saved_models/unet_deform_sigma=6

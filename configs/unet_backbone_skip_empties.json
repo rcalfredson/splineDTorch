@@ -1,8 +1,8 @@
 {
     "backbone": "unet_full",
-    "deform_sigma": 6,
     "train_epochs": 400,
     "train_steps_per_epoch": 100,
     "validation_batch_size": 4,
-    "validation_steps_per_epoch": 100
+    "validation_steps_per_epoch": 100,
+    "skip_empties": true
 }

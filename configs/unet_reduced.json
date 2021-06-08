@@ -1,6 +1,5 @@
 {
-    "backbone": "unet_full",
-    "deform_sigma": 6,
+    "backbone": "unet_reduced",
     "train_epochs": 400,
     "train_steps_per_epoch": 100,
     "validation_batch_size": 4,

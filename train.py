@@ -33,17 +33,15 @@ from tqdm import tqdm
 
 import cv2
 
-# python train.py --config configs\fcrn_backbone.json --plot --left_col_plots scatter --val_interval 2
-## temp command: python trainByBatchLinux.py 10 "--config configs/unet_with_deform.json --plot --val_interval 4"
-# eval command: python eval_via_pt_data.py '/media/Synology3/Robert/objects_counting_dmap/egg_source/heldout_robert_WT_5' '/media/Synology3/Robert/splineDTorch/saved_models/unet_deform_sigma=6/complete_nets'
+# python trainByBatchLinux.py 10 "--config configs/unet_backbone_skip_empties.json --plot --left_col_plots scatter --val_interval 4"
 
 sys_type = platform.system()
 win_drive_letter = "P"
 if sys_type == "Windows" and "Dell2" in platform.node():
     win_drive_letter = "R"
 DATA_BASE_DIR = {
-    "Windows": f"{win_drive_letter}:/Robert/splineDist/data/egg",
-    "Linux": "/media/Synology3/Robert/splineDist/data/egg",
+    "Windows": f"{win_drive_letter}:/Robert/splineDist/data/arena_pit",
+    "Linux": "/media/Synology3/Robert/splineDist/data/arena_pit",
 }[sys_type]
 train_ts = datetime.datetime.now()
 
