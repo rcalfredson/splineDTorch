@@ -25,7 +25,7 @@ def non_maximum_suppression(
     b: don't use pixel closer than b pixels to the image boundary
     """
     global coordEval
-    from stardist.lib.stardist2d import c_non_max_suppression_inds
+    from stardist.lib.stardist2d import c_non_max_suppression_inds_old
 
     # TODO: using b>0 with grid>1 can suppress small/cropped objects at the image boundary
 
@@ -71,7 +71,7 @@ def non_maximum_suppression(
     if verbose:
         t = time()
 
-    survivors[ind] = c_non_max_suppression_inds(
+    survivors[ind] = c_non_max_suppression_inds_old(
         polygons.astype(np.int32),
         mapping,
         np.float32(nms_thresh),

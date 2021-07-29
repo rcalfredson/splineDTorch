@@ -67,7 +67,7 @@ def sample_patches(data, patch_size, skip_empties=False):
     rot_helper = RotationHelper(data[0].shape[0], data[0].shape[1], patch_size)
     res = None
     res = rot_helper.get_random_rot_patch(data, skip_empties=skip_empties)
-        
+
     return res
 
 
@@ -151,11 +151,11 @@ class RotationHelper:
             ]
             too_small_mask = np.isin(sub_mask, too_small_indices)
             sub_mask[too_small_mask] = 0
-        print('subimg:', sub_img)
-        print('submask:', sub_mask)
-        cv2.imshow('subimg', sub_img.astype(np.uint8))
-        cv2.imshow('submask', cv2.resize(sub_mask, (0, 0), fx=3, fy=3))
-        cv2.waitKey(0)
+        # print('subimg:', sub_img)
+        # print('submask:', sub_mask)
+        # cv2.imshow('subimg', sub_img.astype(np.uint8))
+        # cv2.imshow('submask', cv2.resize(sub_mask, (0, 0), fx=3, fy=3))
+        # cv2.waitKey(0)
         split_channels = split_by_channel(sub_img)
         return [
             np.expand_dims(sub_mask.astype(np.uint8), axis=0),

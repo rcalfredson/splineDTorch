@@ -5,7 +5,7 @@ import shlex
 
 # -d egg-fullsize -n FCRN_A -m P:\Robert\objects_counting_dmap\model_backup\egg_FCRN_A_expanded_dataset_v2.pth -lr 0.0045 -e 1 -hf 0.5 -vf 0.5 --plot --batch_size 4
 # 2021-03-05
-# python trainByBatchLinux.py 5 '-d egg-unshuffled -n FCRN_A -lr 0.004 -e 3000 -hf 0.5 -vf 0.5 -rot --plot --batch_size 4 --config /media/Synology3/Robert/objects_counting_dmap/configs/shuffle_data_at_start_2021-02-23.json'
+# python trainByBatchLinux.py 10 "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4"
 
 def options():
   """Parse options for the batch-mode FCRN-A training script."""

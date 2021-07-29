@@ -7,11 +7,11 @@ import shutil
 import subprocess
 
 parser = argparse.ArgumentParser(
-    description="Wrapper script for" " running the eval script for multiple experiments"
+    description="Wrapper script for running the eval script for multiple experiments"
 )
 parser.add_argument(
     "eval_params",
-    help="Options to pass the eval script (" "note: enclose them in quotation marks)",
+    help="Options to pass the eval script (note: enclose them in quotation marks)",
 )
 
 parser.add_argument('dataPath', help="Path to folder containing eval images")

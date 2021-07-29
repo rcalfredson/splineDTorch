@@ -84,8 +84,9 @@ def dist_to_coord(rhos, grid=(1, 1)):
     phis = rhos[:, :, :, :, 1]
     rhos = rhos[:, :, :, :, 0]
 
-    coord[..., 0, :] += rhos * np.cos(phis)  # row coordinate
-    coord[..., 1, :] += rhos * np.sin(phis)  # col coordinate
+    for i in range(2):
+        coord[..., i, :] += rhos * (np.cos(phis) if i == 0 else np.sin(phis))
+        coord[..., i, :] = np.subtract(coord[..., i, :], 1 - 1/grid[i])
     return coord[0] if is_single_image else coord
 
 

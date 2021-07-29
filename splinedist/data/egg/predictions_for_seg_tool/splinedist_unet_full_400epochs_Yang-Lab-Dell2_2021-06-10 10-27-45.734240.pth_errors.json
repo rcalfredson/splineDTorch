@@ -1,0 +1,13 @@
+{
+    "mean_abs_error": 0.3333333333333333,
+    "max_abs_error": 1.0,
+    "mean_rel_error": 0.008547008547008546,
+    "mean_rel_error_0to10": 0.0,
+    "mean_rel_error_11to40": 0.02564102564102564,
+    "mean_rel_error_41plus": 0.0,
+    "errors_by_img": {
+        "9_11_2020_img_0008_0_0_3ZOXW.jpg": 0.0,
+        "9_11_2020_img_0008_0_3_QRTFQ.jpg": 1.0,
+        "9_11_2020_img_0008_0_5_NUTME.jpg": 0.0
+    }
+}

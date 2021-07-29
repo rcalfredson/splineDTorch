@@ -136,3 +136,5 @@ data_by_host/
 debug/
 saved_models/
 
+# Windows
+Thumbs.db

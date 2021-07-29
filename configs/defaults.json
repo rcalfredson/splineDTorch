@@ -26,5 +26,7 @@
     "train_shape_completion": false,
     "train_steps_per_epoch": null,
     "validation_batch_size": 10,
-    "validation_steps_per_epoch": null
+    "validation_steps_per_epoch": null,
+    "zoom_min": null,
+    "zoom_max": null
 }

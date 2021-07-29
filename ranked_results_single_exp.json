@@ -1,54 +1,110 @@
 [
     [
-        "splinedist_unet_400epochs_NZXT-U_2021-04-21 21-52-34.079027",
-        4.594255293376391
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-24 08-54-46.151040",
+        2.9003537959488703
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell2_2021-04-21 15-51-59.194773",
-        5.544419848039997
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-24 01-20-46.359695",
+        3.1425806067154634
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-21 15-53-58.192825",
-        5.797852522447499
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-23 17-37-00.776465",
+        3.1646465577445273
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell3_2021-04-21 22-43-15.912118",
-        6.054873336303181
+        "splinedist_unet_400epochs_Yang-Lab-Dell2_2021-04-25 15-35-13.033974",
+        3.4134044780642547
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-21 23-02-55.061360",
-        6.084153686357053
+        "splinedist_unet_400epochs_NZXT-U_2021-04-24 06-08-59.494387",
+        3.4176458980835895
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-21 23-22-28.977593",
-        6.3586318277838165
+        "splinedist_unet_400epochs_Yang-Lab-Dell2_2021-04-24 16-39-28.753895",
+        3.4227052124629345
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-21 15-44-24.345637",
-        6.446791431575899
+        "splinedist_unet_400epochs_NZXT-U_2021-04-24 18-25-07.151815",
+        3.426452009829386
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-21 19-23-32.299137",
-        6.675417356877447
+        "splinedist_unet_400epochs_Yang-Lab-Dell2_2021-04-24 05-09-58.068122",
+        3.4291641572588976
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell3_2021-04-21 15-57-47.862530",
-        6.6958884660166476
+        "splinedist_unet_400epochs_NZXT-U_2021-04-25 06-43-42.645036",
+        3.4489936723289247
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-22 06-23-31.107600",
-        6.744650412064558
+        "splinedist_unet_400epochs_Yang-Lab-Dell3_2021-04-23 17-48-27.636637",
+        3.4615771416498675
     ],
     [
-        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-22 02-42-33.167443",
-        6.911821792374745
+        "splinedist_unet_400epochs_Yang-Lab-Dell2_2021-04-23 17-42-13.498025",
+        3.6844293088713975
     ],
     [
-        "splinedist_unet_400epochs_NZXT-U_2021-04-21 15-49-48.758072",
-        8.174086392704327
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-25 07-31-16.240600",
+        3.6937493447594085
     ],
     [
-        "splinedist_unet_400epochs_NZXT-U_2021-04-22 03-55-40.484243",
-        8.871520994163545
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-24 16-25-35.033527",
+        3.6962950829799417
+    ],
+    [
+        "splinedist_unet_400epochs_NZXT-U_2021-04-24 12-17-20.200175",
+        3.7001156108791498
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell3_2021-04-24 00-40-04.441700",
+        3.702541330681767
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-25 15-03-30.681699",
+        3.7131394911379694
+    ],
+    [
+        "splinedist_unet_400epochs_NZXT-U_2021-04-25 12-52-48.660668",
+        3.7512357558680764
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-23 17-44-57.538171",
+        3.9576991353508113
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-24 23-58-15.082124",
+        3.9594447808444
+    ],
+    [
+        "splinedist_unet_400epochs_NZXT-U_2021-04-23 17-48-37.497131",
+        3.960467161735854
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-24 04-48-01.261611",
+        3.973208959123093
+    ],
+    [
+        "splinedist_unet_400epochs_NZXT-U_2021-04-25 00-34-15.146434",
+        3.9764867924786063
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell2_2021-04-25 04-07-56.285364",
+        3.9779364945698674
+    ],
+    [
+        "splinedist_unet_400epochs_NZXT-U_2021-04-23 23-59-47.924875",
+        4.250568966393494
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell4_2021-04-25 22-34-59.212929",
+        4.501800954751969
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-24 01-03-48.388825",
+        4.502312724820095
+    ],
+    [
+        "splinedist_unet_400epochs_Yang-Lab-Dell8_2021-04-23 21-19-45.661179",
+        8.63086672506671
     ]
 ]

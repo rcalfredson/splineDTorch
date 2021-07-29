@@ -1,18 +1,23 @@
-"""Main script used to train networks."""
+"""Main script used to train networks.
+"""
 import argparse
-import elasticdeform
 from splinedist.constants import DEVICE
 from matplotlib import pyplot as plt
 from numpy.core.defchararray import mod
 import torch
+import torchvision.transforms
+import torchvision.transforms.functional
 from csbdeep.utils import normalize
+import cv2
 import datetime
 from glob import glob
 import json
 import numpy as np
 import os
 from pathlib import Path
+from PIL import Image
 import platform
+import random
 import shutil
 import signal
 from splinedist.config import Config
@@ -29,19 +34,19 @@ from splinedist.utils import (
 import sys
 from tifffile import imread
 import timeit
+
+import scipy.ndimage as ndi
 from tqdm import tqdm
 
-import cv2
-
-# python trainByBatchLinux.py 10 "--config configs/unet_backbone_skip_empties.json --plot --left_col_plots scatter --val_interval 4"
+# python trainByBatchLinux.py 10 "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4"
 
 sys_type = platform.system()
 win_drive_letter = "P"
 if sys_type == "Windows" and "Dell2" in platform.node():
     win_drive_letter = "R"
 DATA_BASE_DIR = {
-    "Windows": f"{win_drive_letter}:/Robert/splineDist/data/arena_pit",
-    "Linux": "/media/Synology3/Robert/splineDist/data/arena_pit",
+    "Windows": f"{win_drive_letter}:/Robert/splineDist/data",
+    "Linux": "/media/Synology3/Robert/splineDist/data",
 }[sys_type]
 train_ts = datetime.datetime.now()
 
@@ -51,6 +56,19 @@ lr_history = {}
 def options():
     parser = argparse.ArgumentParser(
         description="Train object detection model using SplineDist"
+    )
+    parser.add_argument(
+        "data_path",
+        help='path to the folder containing the "images" and "masks" folders with the '
+        "data to use during training. Must be specified relative to"
+        "the --data_base_dir.",
+    )
+    parser.add_argument(
+        "--data_base_dir",
+        help="path to the folder where individual datasets are"
+        " stored (as specified by data_path). Defaults to Robert/splineDist/data"
+        " on Synology3.",
+        default=DATA_BASE_DIR
     )
     parser.add_argument(
         "--config",
@@ -83,8 +101,8 @@ def options():
 opts = options()
 if not os.path.isdir(data_dir(must_exist=False)):
     Path(data_dir(must_exist=False)).mkdir(parents=True, exist_ok=True)
-X = sorted(glob(os.path.join(DATA_BASE_DIR, "images/*.tif")))
-Y = sorted(glob(os.path.join(DATA_BASE_DIR, "masks/*.tif")))
+X = sorted(glob(os.path.join(DATA_BASE_DIR, opts.data_path, "images/*.tif")))
+Y = sorted(glob(os.path.join(DATA_BASE_DIR, opts.data_path, "masks/*.tif")))
 assert all(Path(x).name == Path(y).name for x, y in zip(X, Y))
 X = list(map(imread, X))
 Y = list(map(imread, Y))
@@ -134,6 +152,8 @@ else:
 phi_generator(M, int(config.contoursize_max))
 grid_generator(M, config.train_patch_size, config.grid)
 
+current_bg_color = None
+
 
 def write_lr_history(config: Config):
     if not hasattr(config, "lr_history_filename"):
@@ -166,17 +186,96 @@ def random_intensity_change(img):
     return img
 
 
-def augmenter(x, y):
-    """Augmentation of a single input/label image pair.
-    x is an input image
-    y is the corresponding ground-truth label image
-    """
-    x, y = random_fliprot(x, y)
-    x = random_intensity_change(x)
-    # add some gaussian noise
-    sig = 0.02 * np.random.uniform(0, 1)
-    x = x + sig * np.random.normal(0, 1, x.shape)
-    return x, y
+def background_color(img):
+    if type(img) != Image.Image:
+        pil_img = Image.fromarray(img)
+    else:
+        pil_img = img
+    colors_in_img = pil_img.getcolors(pil_img.size[0] * pil_img.size[1])
+    top_color = max(colors_in_img)
+    if top_color[1] == (0, 0, 0):
+        colors_in_img.remove(top_color)
+        return max(colors_in_img)[1]
+    return top_color[1]
+
+
+def random_zoom(img: torch.Tensor, mask: torch.Tensor):
+    if config.zoom_min == None or config.zoom_max == None:
+        return
+    zoom_level = np.random.uniform(config.zoom_min, config.zoom_max)
+    zoomed_img = ndi.zoom(img, zoom_level, order=3)
+    zoomed_mask = ndi.zoom(mask, zoom_level, order=0)
+    if zoom_level < 1:
+        new_img = np.empty(img.shape, dtype=np.float32)
+        new_mask = np.zeros(mask.shape, dtype=np.uint8)
+        new_img[: zoomed_img.shape[0], : zoomed_img.shape[1]] = zoomed_img
+        new_img[:, zoomed_img.shape[1] :] = current_bg_color
+        new_img[zoomed_img.shape[0] :, :] = current_bg_color
+        new_mask[: zoomed_img.shape[0], : zoomed_img.shape[1]] = zoomed_mask
+    elif zoom_level > 1:
+        new_img = zoomed_img[: img.shape[0], : img.shape[1]]
+        new_mask = zoomed_mask[: img.shape[0], : img.shape[1]]
+    return (new_img, new_mask)
+
+
+class Augmenter:
+    def __init__(self):
+        self.color_jitter = torchvision.transforms.ColorJitter(0.2, 0.4, 0.2, 0.05)
+        self.random_shift = torchvision.transforms.RandomAffine(
+            0, translate=(0.15, 0.15)
+        )
+
+    def add_color_jitter(self, x):
+        x = x.astype(np.uint8)
+        img = Image.fromarray(x)
+        img = self.color_jitter(img)
+        ret_arr = np.array(img)
+        return ret_arr
+
+    def add_random_shift(self, x, y):
+        x = x.astype(np.uint8)
+        img = Image.fromarray(x)
+        mask = Image.fromarray(y)
+        params = self.random_shift.get_params(
+            (0, 0), (0.15, 0, 15), (1, 1), (0, 0), img.size
+        )
+        img = torchvision.transforms.functional.affine(
+            img,
+            *params,
+            interpolation=torchvision.transforms.functional.InterpolationMode.BICUBIC,
+            fill=current_bg_color,
+        )
+        shifted_mask = torchvision.transforms.functional.affine(
+            mask,
+            *params,
+            interpolation=torchvision.transforms.functional.InterpolationMode.NEAREST,
+        )
+        img = np.array(img)
+        shifted_mask = np.array(shifted_mask)
+        img[np.where(np.all(img == (0, 0, 0), axis=-1))] = current_bg_color
+        return img, y
+
+    def add_blur(self, x):
+        ksize = random.randrange(1, 13, 2)
+        x = cv2.GaussianBlur(x, (ksize, ksize), 1)
+        return x
+
+    def augment(self, x, y):
+        """Augmentation of a single input/label image pair.
+        x is an input image
+        y is the corresponding ground-truth label image
+        """
+        start_time = timeit.default_timer()
+        global current_bg_color
+        current_bg_color = background_color(x.astype(np.uint8))
+        # x, y = self.add_random_shift(x, y)
+        x, y = random_zoom(x, y)
+        x = self.add_color_jitter(x)
+        x, y = random_fliprot(x, y)
+        x = self.add_blur(x)
+        sig = 0.02 * np.random.uniform(0, 1)
+        x = x + sig * np.random.normal(0, 1, x.shape)
+        return x, y
 
 
 model = SplineDist2D(config)
@@ -194,6 +293,7 @@ optimizer = torch.optim.Adam(model.parameters(), config.train_learning_rate)
 lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, factor=config.lr_reduct_factor, verbose=True, patience=config.lr_patience
 )
+augmenter = Augmenter()
 model.prepare_for_training()
 
 train_looper = Looper(
@@ -202,7 +302,7 @@ train_looper = Looper(
     DEVICE,
     model.loss,
     optimizer,
-    augmenter,
+    augmenter.augment,
     X_trn,
     Y_trn,
     validation=False,
@@ -215,7 +315,7 @@ valid_looper = Looper(
     DEVICE,
     model.loss,
     optimizer,
-    augmenter,
+    augmenter.augment,
     X_val,
     Y_val,
     validation=True,

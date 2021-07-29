@@ -39,6 +39,8 @@ class Config:
         self.validation_steps_per_epoch = self.set_conf_param(
             "validation_steps_per_epoch"
         )
+        self.zoom_min = self.set_conf_param('zoom_min')
+        self.zoom_max = self.set_conf_param('zoom_max')
 
         # default config (can be overwritten by kwargs below)
         if self.backbone in (BackboneTypes.unet_full, BackboneTypes.unet_reduced):

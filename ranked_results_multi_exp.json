@@ -1,18 +1,10 @@
 [
     [
-        "saved_models/unet_deform_sigma=6\\complete_nets/task1-uli-errors",
-        3.7580627685749417
+        "saved_models/unet_with_zoom_attempt2\\complete_nets\\task1_uli_task8_robert_combined_errors",
+        3.494543175017125
     ],
     [
-        "saved_models/unet_backbone\\complete_nets/task1-uli-errors",
-        8.967532842727586
-    ],
-    [
-        "saved_models/unet_reduced_backbone\\complete_nets/task1-uli-errors",
-        8.977083856690236
-    ],
-    [
-        "saved_models/unet_deform_sigma=0\\complete_nets/task1-uli-errors",
-        29.17924528301887
+        "complete_nets\\task1_uli_task8_robert_combined_errors",
+        NaN
     ]
 ]

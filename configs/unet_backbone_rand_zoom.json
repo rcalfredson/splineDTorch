@@ -4,5 +4,6 @@
     "train_steps_per_epoch": 100,
     "validation_batch_size": 4,
     "validation_steps_per_epoch": 100,
-    "skip_empties": true
+    "zoom_min": 0.9,
+    "zoom_max": 1.1
 }
