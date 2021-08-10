@@ -131,6 +131,7 @@ dmypy.json
 # SplineDist-specific folders and files
 .vscode
 splinedist_*.pth
+splinedist_*.png
 *lr_history*.json
 data_by_host/
 debug/

@@ -68,12 +68,15 @@ def options():
         help="path to the folder where individual datasets are"
         " stored (as specified by data_path). Defaults to Robert/splineDist/data"
         " on Synology3.",
-        default=DATA_BASE_DIR
+        default=DATA_BASE_DIR,
     )
     parser.add_argument(
         "--config",
         help="Config file to use (default: configs/defaults.json).",
         default="configs/defaults.json",
+    )
+    parser.add_argument(
+        "-m", "--model_path", default="", help="Path of an existing model to load"
     )
     parser.add_argument("--plot", help="Add plots", action="store_true")
     parser.add_argument(
@@ -153,6 +156,15 @@ phi_generator(M, int(config.contoursize_max))
 grid_generator(M, config.train_patch_size, config.grid)
 
 current_bg_color = None
+
+def write_existing_model_data():
+    filename = (
+        f"splinedist_{config.backbone.name}_metadata"
+        f"_{platform.node()}_{train_ts}.json".replace(":", "-")
+    )
+    metadata = {'starter_model': opts.model_path}
+    with open(filename, 'w') as f:
+        json.dump(metadata, f)
 
 
 def write_lr_history(config: Config):
@@ -256,9 +268,16 @@ class Augmenter:
         return img, y
 
     def add_blur(self, x):
-        ksize = random.randrange(1, 13, 2)
-        x = cv2.GaussianBlur(x, (ksize, ksize), 1)
-        return x
+        def round_up_to_odd(f):
+            return int(np.ceil(f) // 2 * 2 + 1)
+
+        # if np.random.uniform() < 0.3:
+        # return x
+        sigma_max = 2.6
+        blur_sigma = np.random.uniform(0, sigma_max)
+        kernel_size = round_up_to_odd(blur_sigma)
+        x_blurred = cv2.GaussianBlur(x, (kernel_size, kernel_size), blur_sigma)
+        return x_blurred
 
     def augment(self, x, y):
         """Augmentation of a single input/label image pair.
@@ -280,6 +299,20 @@ class Augmenter:
 
 model = SplineDist2D(config)
 model.cuda()
+learning_rate = config.train_learning_rate
+if opts.model_path != "":
+    model.load_state_dict(torch.load(model_path))
+    write_existing_model_data()
+    parent_dir = Path(model_path).parents[0]
+    search_string = "_".join(model_path.split("_")[-2:]).split(".pth")[0]
+    lr_files = glob(
+        os.path.join(parent_dir, "*lr_history*%s*" % search_string)
+    ) + glob(os.path.join(parent_dir, "*%s*lr_history*" % search_string))
+    if len(lr_files) > 0:
+        with open(lr_files[0]) as f:
+            lrs = json.load(f)
+        learning_rate = list(lrs.values())[-1]
+    
 median_size = calculate_extents(list(Y), np.median)
 fov = np.array(model._axes_tile_overlap("YX"))
 print(f"median object size:      {median_size}")
@@ -289,7 +322,7 @@ if any(median_size > fov):
         "WARNING: median object size larger than field of view of the neural network."
     )
 
-optimizer = torch.optim.Adam(model.parameters(), config.train_learning_rate)
+optimizer = torch.optim.Adam(model.parameters(), learning_rate)
 lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, factor=config.lr_reduct_factor, verbose=True, patience=config.lr_patience
 )

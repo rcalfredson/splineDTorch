@@ -198,7 +198,7 @@ def get_rand_color(pastel_factor=0.8):
 if opts.no_dots:
     X_names = []
     for single_path in opts.dataPath.split(","):
-        X_names.extend(sorted(glob("%s/*.tif" % single_path)))
+        X_names.extend(sorted(glob("%s/*.jpg" % single_path)))
 elif opts.coco:
     coco_data = COCO(opts.coco)
     img_ids = list(coco_data.imgs.keys())
@@ -413,6 +413,8 @@ for model_path in models:
             and not opts.no_dots
             and opts.vis
             and abs_err >= opts.vis_threshold
+            and num_labeled >= 11
+            and num_labeled <= 40
         ):
             # should I add to this code path?
             # three of the conditions above seem to still apply here:
@@ -607,6 +609,21 @@ for model_path in models:
                 ] = base_img
                 combined_img[:, 2 * ground_truth.shape[1] + 20 :] = predictions
             else:
+                base_img = cv2.cvtColor(
+                    cv2.resize(
+                        base_img,
+                        (0, 0),
+                        fx=ground_truth.shape[1] / base_img.shape[1],
+                        fy=ground_truth.shape[0] / base_img.shape[0],
+                    ),
+                    cv2.COLOR_RGB2BGR,
+                )
+                predictions = cv2.resize(
+                    predictions,
+                    (0, 0),
+                    fx=ground_truth.shape[1] / predictions.shape[1],
+                    fy=ground_truth.shape[0] / predictions.shape[0],
+                )
                 combined_img = np.zeros(
                     (
                         ground_truth.shape[0] + predictions.shape[0] * 2 + 2 * 10,

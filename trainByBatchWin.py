@@ -15,10 +15,14 @@ def options():
     p = argparse.ArgumentParser(
         description="Run multiple FCRN-A trainings" + "in batch mode (i.e., in serial)"
     )
-    p.add_argument(
-        "n_repeats",
+    group = p.add_mutually_exclusive_group()
+    group.add_argument(
+        "--n_repeats",
         help="Number of times to repeat the training.",
         type=int,
+    )
+    group.add_argument(
+        "--existing_nets", help="Path to folder containing existing nets to retrain."
     )
     p.add_argument(
         "trainParams",
@@ -43,5 +47,11 @@ def run_one_training():
     )
 
 
+if opts.existing_nets:
+    net_retrainer = NetRetrainManager(opts)
+    while net_retrainer.nets_remaining_to_retrain():
+        net_to_retrain = net_retrainer.get_random_net_to_retrain()
+        run_one_training(net_to_retrain)
+    exit()
 for _ in range(opts.n_repeats):
     run_one_training()
