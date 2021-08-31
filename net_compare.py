@@ -73,13 +73,9 @@ def parse_error_for_dir(dir_name, index):
     elif opts.paired_name_map and index > 0:
         for net_name in pairing_order:
             error_file = "%s_errors.json" % (paired_name_map[net_name])
-            # print('original net name:', net_name)
-            # print('new net name:', paired_name_map[net_name])
             process_single_error(
                 index, os.path.join(dir_name, error_file), outliers_for_dir
             )
-            # print('errors:', errors)
-            # input()
 
 def parse_errors():
     for i, dir_name in enumerate((opts.dir1, opts.dir2)):
