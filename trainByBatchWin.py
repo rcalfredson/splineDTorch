@@ -48,7 +48,7 @@ def run_one_training():
 
 
 if opts.existing_nets:
-    net_retrainer = NetRetrainManager(opts)
+    net_retrainer = NetRetrainManager(opts.existing_nets)
     while net_retrainer.nets_remaining_to_retrain():
         net_to_retrain = net_retrainer.get_random_net_to_retrain()
         run_one_training(net_to_retrain)

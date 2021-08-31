@@ -268,16 +268,9 @@ class Augmenter:
         return img, y
 
     def add_blur(self, x):
-        def round_up_to_odd(f):
-            return int(np.ceil(f) // 2 * 2 + 1)
-
-        # if np.random.uniform() < 0.3:
-        # return x
-        sigma_max = 2.6
-        blur_sigma = np.random.uniform(0, sigma_max)
-        kernel_size = round_up_to_odd(blur_sigma)
-        x_blurred = cv2.GaussianBlur(x, (kernel_size, kernel_size), blur_sigma)
-        return x_blurred
+        ksize = random.randrange(1, 13, 2)
+        x = cv2.GaussianBlur(x, (ksize, ksize), 1)
+        return x
 
     def augment(self, x, y):
         """Augmentation of a single input/label image pair.
@@ -301,10 +294,10 @@ model = SplineDist2D(config)
 model.cuda()
 learning_rate = config.train_learning_rate
 if opts.model_path != "":
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(opts.model_path))
     write_existing_model_data()
-    parent_dir = Path(model_path).parents[0]
-    search_string = "_".join(model_path.split("_")[-2:]).split(".pth")[0]
+    parent_dir = Path(opts.model_path).parents[1]
+    search_string = "_".join(opts.model_path.split("_")[-2:]).split(".pth")[0]
     lr_files = glob(
         os.path.join(parent_dir, "*lr_history*%s*" % search_string)
     ) + glob(os.path.join(parent_dir, "*%s*lr_history*" % search_string))
@@ -312,7 +305,7 @@ if opts.model_path != "":
         with open(lr_files[0]) as f:
             lrs = json.load(f)
         learning_rate = list(lrs.values())[-1]
-    
+
 median_size = calculate_extents(list(Y), np.median)
 fov = np.array(model._axes_tile_overlap("YX"))
 print(f"median object size:      {median_size}")

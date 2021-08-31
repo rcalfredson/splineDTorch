@@ -19,7 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 from pycocotools.coco import COCO
 import random
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, Point
 from splinedist.config import Config
 from splinedist.models.model2d import SplineDist2D
 from splinedist.plot.plot import _draw_polygons
@@ -30,8 +30,10 @@ import sys
 sys.path.append(os.path.abspath("../counting-3"))
 import timeit
 import torch
-from util import COL_W, COL_R, COL_B, COL_G, COL_B_L
+from util import COL_W, COL_R, COL_B, COL_G, COL_B_L, COL_O
 from chamber import CT
+
+# python eval_via_pt_data.py  ../objects_counting_dmap/egg_source/combined_robert_uli_temp '/media/Synology3/Robert/splineDTorch/saved_models/egg/unet_expanded_data_1_1200epch/complete_nets/*.pth'
 
 start_time = timeit.default_timer()
 p = argparse.ArgumentParser(
@@ -91,6 +93,12 @@ p.add_argument(
     action="store_true",
     help="whether there are no point annotation files accompanying the images"
     ' (note: typically these match the filename of the image, but with "dots" added)',
+)
+p.add_argument(
+    "--check_dot_locations",
+    action="store_true",
+    help="compare the locations of dot annotations with SplineDist predictions and flag any"
+    " that violate a one-to-one correspondence (note: cannot be used with --no_dots)",
 )
 p.add_argument(
     "--crop_test",
@@ -190,6 +198,38 @@ def get_rand_color(pastel_factor=0.8):
         (x + pastel_factor) / (1.0 + pastel_factor)
         for x in [random.uniform(0, 1.0) for i in [1, 2, 3]]
     ]
+
+
+def get_smoothed_egg_outline_img():
+    img_show = cv2.cvtColor(np.array(img_display), cv2.COLOR_RGB2BGR)
+    coord, points, prob = details["coord"], details["points"], details["prob"]
+    for egg_contour in coord:
+        annot = get_interpolated_points(
+            np.expand_dims(
+                np.array(
+                    [
+                        tuple(
+                            reversed(
+                                [
+                                    int(
+                                        el
+                                        * (
+                                            display_resize_factor
+                                            / predict_resize_factor
+                                        )
+                                    )
+                                    for el in tup
+                                ]
+                            )
+                        )
+                        for tup in zip(*egg_contour)
+                    ]
+                ).T,
+                0,
+            )
+        )[0]
+        draw_line(img_show, [annot])
+    return img_show
 
 
 # testImg = tifffile.imread(r"P:\Robert\splineDist\data\egg\images\Apr5_5left_38.tif")
@@ -305,7 +345,7 @@ for model_path in models:
         Path(error_dir).mkdir(parents=True, exist_ok=True)
     else:
         model_dir = Path(model_path).parent
-        error_dir = os.path.join(model_dir, "error_examples")
+        error_dir = os.path.join(model_dir, "error_examples/dot_compare")
     true_values = []
     predicted_values = []
     errors_by_img = {}
@@ -372,35 +412,61 @@ for model_path in models:
                 labels, details = model.predict_instances(img)
                 export_egg_json(img_basename, details, model_path, crop_level)
 
-        if opts.vis:
-            img_show = cv2.cvtColor(np.array(img_display), cv2.COLOR_RGB2BGR)
-            coord, points, prob = details["coord"], details["points"], details["prob"]
-            for egg_contour in coord:
-                annot = get_interpolated_points(
-                    np.expand_dims(
-                        np.array(
-                            [
-                                tuple(
-                                    reversed(
-                                        [
-                                            int(
-                                                el
-                                                * (
-                                                    display_resize_factor
-                                                    / predict_resize_factor
-                                                )
-                                            )
-                                            for el in tup
-                                        ]
-                                    )
-                                )
-                                for tup in zip(*egg_contour)
-                            ]
-                        ).T,
-                        0,
+        
+        if opts.check_dot_locations:
+            coords_of_pts = list(zip(*np.where(Y[i])[0:2]))
+            control_pt_coords = [list(zip(*el)) for el in details["coord"]]
+            unplaced_dots = []
+            predictions_to_dots = {}
+            for dot in coords_of_pts:
+                for j, outline in enumerate(control_pt_coords):
+                    dot_at_pt = Point(*dot)
+                    predicted_polygon = Polygon(outline)
+                    if predicted_polygon.contains(dot_at_pt):
+                        if j in predictions_to_dots:
+                            predictions_to_dots[j].append(dot)
+                        else:
+                            predictions_to_dots[j] = [dot]
+                        break
+                unplaced_dots.append(tuple(reversed(dot)))
+            # how to find predicted outlines without dots matched to them?
+            predictions_without_dots = []
+            for i in range(len(control_pt_coords)):
+                if i not in predictions_to_dots:
+                    predictions_without_dots.append(tuple(reversed(details['points'][i])))
+            # draw these dots on a copy of the original image.
+            img_out = np.array(img_orig)
+            for unplaced_dot in unplaced_dots:
+                cv2.circle(img_out, unplaced_dot, radius=1, color=COL_R, thickness=-1)
+            for unmatched_pred in predictions_without_dots:
+                cv2.drawMarker(img_out, unmatched_pred, COL_R, markerType=cv2.MARKER_TILTED_CROSS,
                     )
-                )[0]
-                draw_line(img_show, [annot])
+            for outline_idx in predictions_to_dots:
+                if len(predictions_to_dots[outline_idx]) > 1:
+                    color = COL_O
+                else:
+                    color = COL_G
+                for dot in predictions_to_dots[outline_idx]:
+                    cv2.circle(
+                        img_out,
+                        tuple(reversed(dot)),
+                        radius=1,
+                        color=color,
+                        thickness=-1,
+                    )
+            outline_img = get_smoothed_egg_outline_img()
+            if img_out.shape[0] > img_out.shape[1]: # image is tall, so place them horizontally together
+                combined_img = np.zeros((img_out.shape[0], 2*img_out.shape[1] + 20, 3), dtype=np.uint8)
+                combined_img[:, :img_out.shape[1]] = img_out
+                combined_img[:, img_out.shape[1] + 20:] = outline_img
+            else: # image is wide, so place them vertically together
+                combined_img = np.zeros((2*img_out.shape[0] + 20, img_out.shape[1], 3), dtype=np.uint8)
+                combined_img[:img_out.shape[0], :] = img_out
+                combined_img[img_out.shape[0] + 20:, :] = outline_img
+            print('saving the image to this location:', os.path.join(error_dir, f"{img_basename}_dot_compare.png"))
+            cv2.imwrite(os.path.join(error_dir, f"{len(coords_of_pts)}eggs_{img_basename}_dot_compare.png"), combined_img)
+        if opts.vis:
+            img_show = get_smoothed_egg_outline_img()
             cv2.imwrite(
                 os.path.join(
                     "debug",
@@ -413,8 +479,6 @@ for model_path in models:
             and not opts.no_dots
             and opts.vis
             and abs_err >= opts.vis_threshold
-            and num_labeled >= 11
-            and num_labeled <= 40
         ):
             # should I add to this code path?
             # three of the conditions above seem to still apply here:
@@ -434,9 +498,6 @@ for model_path in models:
                 out_folder = error_dir
             else:
                 out_folder = Path(model_path).parent
-            outfile = os.path.join(
-                error_dir, f"{os.path.splitext(img_basename)}_egg_outlines.json"
-            )
             print("trying to make the following directory:", error_dir)
             Path(error_dir).mkdir(parents=True, exist_ok=True)
             gt_pts = np.where(Y[i] > 0)
@@ -565,6 +626,7 @@ for model_path in models:
                 create_and_save_img(gt_renderer)
                 ground_truth = cv2.imread("debug/temp.png")
                 predictions = img_show
+
             # cv2.imshow("gt", ground_truth)
             # cv2.waitKey(0)
 

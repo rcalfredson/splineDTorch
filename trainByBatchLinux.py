@@ -4,9 +4,7 @@ import os
 import subprocess
 import shlex
 
-# -d egg-fullsize -n FCRN_A -m P:\Robert\objects_counting_dmap\model_backup\egg_FCRN_A_expanded_dataset_v2.pth -lr 0.0045 -e 1 -hf 0.5 -vf 0.5 --plot --batch_size 4
-# 2021-03-05
-# python trainByBatchLinux.py 10 "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4 egg"
+# python trainByBatchLinux.py --existing_nets /media/Synology3/Robert/splineDTorch/saved_models/egg/unet_expanded_data_1_800epch/complete_nets "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4 egg"  > /dev/null 2>&1 &
 
 
 def options():
@@ -28,17 +26,26 @@ def options():
     )
     return p.parse_args()
 
+def run_one_training(existing_model=None):
+    subprocess.call(
+        "python train.py --export_at_end %s%s"
+        % (
+            opts.trainParams,
+            ""
+            if existing_model is None
+            else f' -m "{os.path.join(opts.existing_nets, existing_model)}"',
+        ),
+        shell=True,
+        preexec_fn=os.setsid,
+    )
+
 
 opts = options()
 if opts.existing_nets:
-    net_retrainer = NetRetrainManager(opts)
+    net_retrainer = NetRetrainManager(opts.existing_nets)
     while net_retrainer.nets_remaining_to_retrain():
         net_to_retrain = net_retrainer.get_random_net_to_retrain()
         run_one_training(net_to_retrain)
     exit()
-for n in range(opts.nRepeats):
-    subprocess.call(
-        "python train.py --export_at_end %s" % opts.trainParams,
-        shell=True,
-        preexec_fn=os.setsid,
-    )
+for n in range(opts.n_repeats):
+    run_one_training()

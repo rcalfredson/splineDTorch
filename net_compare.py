@@ -2,12 +2,12 @@ import argparse
 from glob import glob
 import json
 import os
-from statistics import ttest_ind
+from statistics import ttest_ind, ttest_rel
 
 import numpy as np
 
 parser = argparse.ArgumentParser(
-    description="Run t-test comparison of results from" " two FCRN learning experiments"
+    description="Run t-test comparison of results from" " two SplineDist learning experiments"
 )
 parser.add_argument("dir1", help="Folder containing first set of error results")
 parser.add_argument("dir2", help="Folder containing second set of error results")
@@ -69,13 +69,17 @@ def parse_error_for_dir(dir_name, index):
             print('processing a single error')
             process_single_error(index, error_file, outliers_for_dir)
             if opts.paired_name_map:
-                pairing_order.append(error_file.split("_errors")[0])
+                pairing_order.append(os.path.basename(error_file).split("_errors")[0])
     elif opts.paired_name_map and index > 0:
         for net_name in pairing_order:
             error_file = "%s_errors.json" % (paired_name_map[net_name])
+            # print('original net name:', net_name)
+            # print('new net name:', paired_name_map[net_name])
             process_single_error(
                 index, os.path.join(dir_name, error_file), outliers_for_dir
             )
+            # print('errors:', errors)
+            # input()
 
 def parse_errors():
     for i, dir_name in enumerate((opts.dir1, opts.dir2)):
@@ -88,7 +92,11 @@ parse_errors()
 
 for err_cat in error_categories:
     print("Error category:", err_cat)
-    res = ttest_ind(
+    if opts.paired_name_map:
+        fn_to_call = ttest_rel
+    else:
+        fn_to_call = ttest_ind
+    res = fn_to_call(
         np.asarray(errors[0][err_cat]), np.asarray(errors[1][err_cat]), msg=True
     )
     print()
