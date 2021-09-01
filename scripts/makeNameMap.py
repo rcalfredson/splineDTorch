@@ -5,12 +5,11 @@ import re
 
 name_maps = glob(
     "/media/Synology3/Robert/splineDTorch/saved_models/"
-    "egg/unet_expanded_data_1_1200epch/*metadata*.json"
+    "egg/unet_expanded_data_1_1600epch/*metadata*.json"
 )
 map_data = {}
 
 print("name maps:", name_maps)
-input()
 for map_filename in name_maps:
     print('map filename:', map_filename)
     with open(map_filename) as f:
@@ -30,12 +29,11 @@ for map_filename in name_maps:
     print(
         os.path.exists(
             os.path.join(
-                "/media/Synology3/Robert/splineDTorch/saved_models/egg/unet_expanded_data_1_1200epch/complete_nets",
+                "/media/Synology3/Robert/splineDTorch/saved_models/egg/unet_expanded_data_1_1600epch/complete_nets",
                 model_name,
             )
         )
     )
-    input()
     map_data[model_name] = os.path.basename(net_data["starter_model"])
-with open('/media/Synology3/Robert/splineDTorch/saved_models/egg/unet_expanded_data_1_1200epch/complete_nets/name_map.json', 'w') as f:
+with open('/media/Synology3/Robert/splineDTorch/saved_models/egg/unet_expanded_data_1_1600epch/complete_nets/name_map.json', 'w') as f:
     json.dump(map_data, f, ensure_ascii=False, indent=4)

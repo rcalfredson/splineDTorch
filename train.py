@@ -1,6 +1,7 @@
 """Main script used to train networks.
 """
 import argparse
+from detectron2.data import transforms as T
 from splinedist.constants import DEVICE
 from matplotlib import pyplot as plt
 from numpy.core.defchararray import mod
@@ -10,6 +11,7 @@ import torchvision.transforms.functional
 from csbdeep.utils import normalize
 import cv2
 import datetime
+import functools
 from glob import glob
 import json
 import numpy as np
@@ -21,6 +23,7 @@ import random
 import shutil
 import signal
 from splinedist.config import Config
+from splinedist.rotation import rotate_image
 from splinedist.looper import Looper
 from splinedist.models.model2d import SplineDist2D
 from splinedist.utils import (
@@ -34,11 +37,12 @@ from splinedist.utils import (
 import sys
 from tifffile import imread
 import timeit
+from util import background_color, fill_in_blanks, get_border_vals
 
 import scipy.ndimage as ndi
 from tqdm import tqdm
 
-# python trainByBatchLinux.py 10 "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4"
+# python trainByBatchLinux.py 10 "--config configs/unet_reduced_backbone_arena_wells.json --plot --val_interval 4 arena_pit/scaled_25%"
 
 sys_type = platform.system()
 win_drive_letter = "P"
@@ -109,6 +113,26 @@ Y = sorted(glob(os.path.join(DATA_BASE_DIR, opts.data_path, "masks/*.tif")))
 assert all(Path(x).name == Path(y).name for x, y in zip(X, Y))
 X = list(map(imread, X))
 Y = list(map(imread, Y))
+resize_factor = 0.744
+# X = list(
+#     map(
+#         functools.partial(cv2.resize, dsize=(0, 0), fx=resize_factor, fy=resize_factor),
+#         X,
+#     )
+# )
+# Y = list(
+#     map(
+#         functools.partial(
+#             cv2.resize,
+#             dsize=(0, 0),
+#             fx=resize_factor,
+#             fy=resize_factor,
+#             interpolation=cv2.INTER_NEAREST,
+#         ),
+#         Y,
+#     ),
+# )
+
 n_channel = 1 if X[0].ndim == 2 else X[0].shape[-1]
 axis_norm = (0, 1)  # normalize channels independently
 
@@ -153,17 +177,25 @@ else:
     plots = [None] * 2
 
 phi_generator(M, int(config.contoursize_max))
-grid_generator(M, config.train_patch_size, config.grid)
-
+for patch_size in (
+    (640, 960),
+    (672, 1008),
+    (704, 1056),
+    (736, 1104),
+    (768, 1152),
+    (800, 1200),
+):
+    grid_generator(M, patch_size, config.grid)
 current_bg_color = None
+
 
 def write_existing_model_data():
     filename = (
         f"splinedist_{config.backbone.name}_metadata"
         f"_{platform.node()}_{train_ts}.json".replace(":", "-")
     )
-    metadata = {'starter_model': opts.model_path}
-    with open(filename, 'w') as f:
+    metadata = {"starter_model": opts.model_path}
+    with open(filename, "w") as f:
         json.dump(metadata, f)
 
 
@@ -183,32 +215,29 @@ def random_fliprot(img: torch.Tensor, mask: torch.Tensor):
     assert img.ndim >= mask.ndim
     axes = tuple(range(mask.ndim))
     perm = tuple(np.random.permutation(axes))
-    img = img.transpose(perm + tuple(range(mask.ndim, img.ndim)))
-    mask = mask.transpose(perm)
+    # img = img.transpose(perm + tuple(range(mask.ndim, img.ndim)))
+    # mask = mask.transpose(perm)
     for ax in axes:
         if np.random.rand() > 0.5:
             img = np.flip(img, axis=ax)
             mask = np.flip(mask, axis=ax)
-    img = normalize(img, 1, 99.8, axis=axis_norm)
+    return img, mask
+
+
+def random_360rot(img: torch.Tensor, mask: torch.Tensor):
+    rotation_angle = np.random.randint(0, 360)
+    img = rotate_image(
+        img, rotation_angle, use_linear=True, crop_based_on_orig_size=True
+    )[0]
+    mask = rotate_image(
+        mask, rotation_angle, use_linear=False, crop_based_on_orig_size=True
+    )[0]
     return img, mask
 
 
 def random_intensity_change(img):
     img = img * np.random.uniform(0.6, 2) + np.random.uniform(-0.2, 0.2)
     return img
-
-
-def background_color(img):
-    if type(img) != Image.Image:
-        pil_img = Image.fromarray(img)
-    else:
-        pil_img = img
-    colors_in_img = pil_img.getcolors(pil_img.size[0] * pil_img.size[1])
-    top_color = max(colors_in_img)
-    if top_color[1] == (0, 0, 0):
-        colors_in_img.remove(top_color)
-        return max(colors_in_img)[1]
-    return top_color[1]
 
 
 def random_zoom(img: torch.Tensor, mask: torch.Tensor):
@@ -218,7 +247,7 @@ def random_zoom(img: torch.Tensor, mask: torch.Tensor):
     zoomed_img = ndi.zoom(img, zoom_level, order=3)
     zoomed_mask = ndi.zoom(mask, zoom_level, order=0)
     if zoom_level < 1:
-        new_img = np.empty(img.shape, dtype=np.float32)
+        new_img = np.empty(img.shape, dtype=np.uint8)
         new_mask = np.zeros(mask.shape, dtype=np.uint8)
         new_img[: zoomed_img.shape[0], : zoomed_img.shape[1]] = zoomed_img
         new_img[:, zoomed_img.shape[1] :] = current_bg_color
@@ -232,16 +261,21 @@ def random_zoom(img: torch.Tensor, mask: torch.Tensor):
 
 class Augmenter:
     def __init__(self):
-        self.color_jitter = torchvision.transforms.ColorJitter(0.2, 0.4, 0.2, 0.05)
+        self.color_jitter = torchvision.transforms.ColorJitter([0.6, 1], 0, 0.2, 0.05)
         self.random_shift = torchvision.transforms.RandomAffine(
             0, translate=(0.15, 0.15)
         )
+        self.resize_edge_lengths = (640, 672, 704, 736, 768, 800)
+        self.max_edge_length = 1333
 
     def add_color_jitter(self, x):
         x = x.astype(np.uint8)
+        # cv2.imshow('debug', x)
         img = Image.fromarray(x)
         img = self.color_jitter(img)
         ret_arr = np.array(img)
+        # cv2.imshow('debug_after', ret_arr)
+        # cv2.waitKey(0)
         return ret_arr
 
     def add_random_shift(self, x, y):
@@ -264,29 +298,103 @@ class Augmenter:
         )
         img = np.array(img)
         shifted_mask = np.array(shifted_mask)
-        img[np.where(np.all(img == (0, 0, 0), axis=-1))] = current_bg_color
+        img = fill_in_blanks(img, current_bg_color)
         return img, y
+
+    def add_clahe_contrast_adj(self, x):
+        if np.random.random() < 0.3:
+            return x
+        try:
+            clipLimit = np.random.randint(1, 17)
+            lab = cv2.cvtColor(x, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=(8, 8))
+            cl = clahe.apply(l.astype(np.uint8))
+            limg = cv2.merge((cl, a, b))
+            final = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+            return final
+        except cv2.error:
+            return x
 
     def add_blur(self, x):
         ksize = random.randrange(1, 13, 2)
         x = cv2.GaussianBlur(x, (ksize, ksize), 1)
         return x
 
+    def resize_shortest_edge(
+        self, img, side_length=None, interpolation=cv2.INTER_CUBIC
+    ):
+        h, w = img.shape[:2]
+        if side_length is None:
+            side_length = np.random.choice(self.resize_edge_lengths)
+        scale = side_length * 1 / min(h, w)
+        if h < w:
+            newh, neww = side_length, scale * w
+        else:
+            newh, neww = scale * h, side_length
+        if max(newh, neww) > self.max_edge_length:
+            scale = self.max_edge_length * 1 / max(newh, neww)
+
+        img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=interpolation)
+        return img, side_length
+
     def augment(self, x, y):
         """Augmentation of a single input/label image pair.
         x is an input image
         y is the corresponding ground-truth label image
         """
+        no_cutoff = None
         start_time = timeit.default_timer()
-        global current_bg_color
-        current_bg_color = background_color(x.astype(np.uint8))
-        # x, y = self.add_random_shift(x, y)
-        x, y = random_zoom(x, y)
-        x = self.add_color_jitter(x)
-        x, y = random_fliprot(x, y)
-        x = self.add_blur(x)
-        sig = 0.02 * np.random.uniform(0, 1)
-        x = x + sig * np.random.normal(0, 1, x.shape)
+        x_orig = x
+        y_orig = y
+        num_attempts = 0
+        while no_cutoff != True and num_attempts < 3:
+            global current_bg_color
+            current_bg_color = background_color(x_orig.astype(np.uint8))
+            if no_cutoff != True and num_attempts < 2:
+                # x, y = self.add_random_shift(x_orig, y_orig)
+                pass
+            # x, side_length = self.resize_shortest_edge(x_orig)
+            # y, _ = self.resize_shortest_edge(
+                # y_orig, side_length=side_length, interpolation=cv2.INTER_NEAREST
+            # )
+            # cv2.imshow('img_after', x.astype(np.uint8))
+            # cv2.imshow('mask_after', y)
+            # print('selected side length:', side_length)
+            # cv2.waitKey()
+            # x, y = random_zoom(x, y)
+            # x = self.add_clahe_contrast_adj(x)
+            # x = self.add_color_jitter(x)
+            # x = self.add_blur(x)
+            x, y = random_fliprot(x_orig, y_orig)
+            x, y = random_360rot(x, y)
+            # x_prenorm = x
+            x = normalize(x, 1, 99.8, axis=axis_norm)
+            # cv2.imshow('before norm:', x_prenorm)
+            # print('after normalization:', x)
+            # cv2.imshow('after norm:', x)
+            # print('before norm:', x_prenorm)
+            # cv2.waitKey(0)
+            # input()
+            sig = 0.02 * np.random.uniform(0, 1)
+            x = x + sig * np.random.normal(0, 1, x.shape)
+            # x = np.clip(x, a_min=0, a_max=1)
+            if config.skip_partials:
+                border_vals = get_border_vals(y)
+                if len(border_vals) > 1:
+                    no_cutoff = False
+                else:
+                    no_cutoff = True
+            else:
+                no_cutoff = True
+            num_attempts += 1
+        # cv2.imshow('augmented image', x)
+        # cv2.imshow('ground truth masks', y)
+        # print('augmented image:', x)
+        # print('ground truth masks:', y)
+        # with np.printoptions(threshold=sys.maxsize), open("debug1", "w") as f:
+        #     print("ground truth:", y, file=f)
+        # cv2.waitKey(0)
         return x, y
 
 
@@ -298,9 +406,9 @@ if opts.model_path != "":
     write_existing_model_data()
     parent_dir = Path(opts.model_path).parents[1]
     search_string = "_".join(opts.model_path.split("_")[-2:]).split(".pth")[0]
-    lr_files = glob(
-        os.path.join(parent_dir, "*lr_history*%s*" % search_string)
-    ) + glob(os.path.join(parent_dir, "*%s*lr_history*" % search_string))
+    lr_files = glob(os.path.join(parent_dir, "*lr_history*%s*" % search_string)) + glob(
+        os.path.join(parent_dir, "*%s*lr_history*" % search_string)
+    )
     if len(lr_files) > 0:
         with open(lr_files[0]) as f:
             lrs = json.load(f)

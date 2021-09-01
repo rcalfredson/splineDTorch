@@ -1,5 +1,6 @@
 import numpy as np
-from collections import Counter
+from itertools import cycle
+from random import shuffle as shuffle_list
 
 class RollingSequence:
     """Helper class for creating batches for rolling sequence.
@@ -7,9 +8,10 @@ class RollingSequence:
     Create batches of size `batch_size` that contain indices in `range(data_size)`.
     To that end, the data indices are repeated (rolling), either in ascending order or
     shuffled if `shuffle=True`. If taking batches sequentially, all data indices will
-    appear equally often. All calls to `batch(i)` will return the same batch for same i.
-    Parameter `length` will only determine the result of `len`, it has no effect otherwise.
-    Note that batch_size is allowed to be larger than data_size.
+    appear equally often. If the size of the dataset isn't a multiple of the batch size,
+    then successive sets of batch indices will roll over. For example, if batch size is
+    4 and indices span 0-9, then the batches will be (0-3), (4-7), (8-9 and 0-1), (2-5),
+    and so forth.
     """
 
     def __init__(self, data_size, batch_size, length=None, shuffle=True, rng=None):
@@ -21,40 +23,20 @@ class RollingSequence:
             2 ** 63 - 1 if length is None else int(length)
         )  # 2**63-1 is max possible value
         self.shuffle = bool(shuffle)
-        self.index_gen = rng.permutation if self.shuffle else np.arange
-        self.index_map = {}
-        # self.indices_returned = []
+        self.indices = list(range(self.data_size))
+        if self.shuffle:
+            shuffle_list(self.indices)
+        self.cycler = cycle(self.indices)
 
     def __len__(self):
         return self.length
-
-    def _index(self, loop):
-        if loop in self.index_map:
-            return self.index_map[loop]
-        else:
-            return self.index_map.setdefault(loop, self.index_gen(self.data_size))
-
-    def reset_index_map(self):
-        self.index_map = {}
-        # self.indices_returned = []
 
     def __iter__(self):
         for i in range(len(self)):
             yield self[i]
 
-    def batch(self, i):
-        pos = i * self.batch_size
-        loop = pos // self.data_size
-        pos_loop = pos % self.data_size
-        sl = slice(pos_loop, pos_loop + self.batch_size)
-        index = self._index(loop)
-        _loop = loop
-        while sl.stop > len(index):
-            _loop += 1
-            index = np.concatenate((index, self._index(_loop)))
-        # print(f"### - batch({i:02}) -> {tuple(index[sl])}", flush=True)
-        # self.indices_returned += list(index[sl])
-        return index[sl]
+    def batch(self, ):
+        return [next(self.cycler) for _ in range(self.batch_size)]
 
     def __getitem__(self, i):
-        return self.batch(i)
+        return self.batch()

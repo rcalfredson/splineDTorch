@@ -10,7 +10,6 @@ import json
 import matplotlib
 
 import math
-
 matplotlib.use("agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -289,6 +288,32 @@ config = Config(opts.config, n_channel)
 phi = np.load(os.path.join(data_dir(), "phi_" + str(8) + ".npy"))
 
 
+def apply_brightness_contrast(input_img, brightness=0, contrast=0):
+
+    if brightness != 0:
+        if brightness > 0:
+            shadow = brightness
+            highlight = 255
+        else:
+            shadow = 0
+            highlight = 255 + brightness
+        alpha_b = (highlight - shadow) / 255
+        gamma_b = shadow
+
+        buf = cv2.addWeighted(input_img, alpha_b, input_img, 0, gamma_b)
+    else:
+        buf = input_img.copy()
+
+    if contrast != 0:
+        f = 131 * (contrast + 127) / (127 * (131 - contrast))
+        alpha_c = f
+        gamma_c = 127 * (1 - f)
+
+        buf = cv2.addWeighted(buf, alpha_c, buf, 0, gamma_c)
+
+    return buf
+
+
 def get_interpolated_points(data, n_points=30):
     M = np.shape(data)[2]
 
@@ -367,193 +392,105 @@ for model_path in models:
         predict_start = timeit.default_timer()
         img_basename = os.path.basename(X_names[i])
         img_orig = img
-        predict_resize_factor = 1.0
-        display_resize_factor = 1.0
-        img = cv2.resize(
-            img, (0, 0), fx=predict_resize_factor, fy=predict_resize_factor
-        )
-        img_display = cv2.resize(
-            img_orig, (0, 0), fx=display_resize_factor, fy=display_resize_factor
-        )
-        img = normalize(img, 1, 99.8, axis=axis_norm)
-        img = img.astype(np.float32)
-        labels, details = model.predict_instances(img)
-        num_predicted = len(details["points"])
-        print("img %i of %i" % (i, tot_num_examples))
-        print("num predicted:", num_predicted)
-        if not opts.skip_err:
-            chamber_type_path = os.path.join(
-                Path(X_names[i]).parent, "chamber_types.json"
+        for predict_resize_factor in np.linspace(0.13, 0.20, 6):
+            display_resize_factor = 0.25
+            img = cv2.resize(
+                img_orig, (0, 0), fx=predict_resize_factor, fy=predict_resize_factor
             )
-            has_chamber_type = os.path.exists(chamber_type_path)
-            if has_chamber_type:
-                pass
-                with open(chamber_type_path) as f:
-                    ct_map = json.load(f)
-                    ct_instance = CT[ct_map[img_basename]].value()
-                    num_labeled = ct_instance.numRows * ct_instance.numCols
-                    if type(ct_instance) == type(CT.large.value()):
-                        num_labeled *= 4
-            elif opts.coco:
-                num_labeled = len(np.unique(Y[i])) - 1
-            else:
-                num_labeled = np.sum(Y[i])
-            print("num labeled:", num_labeled)
-            path_components = os.path.normpath(X_names[i]).split(os.sep)
-            abs_err = abs(num_labeled - num_predicted)
-            errors_by_img[f"{path_components[-2]}_{path_components[-1]}"] = abs_err
-            true_values.append(num_labeled)
-        predicted_values.append(num_predicted)
-        if opts.export_egg_json:
-            for crop_level in crop_levels:
-                crop_slice = slice(0, -crop_level if crop_level else None)
-                img = img_orig[crop_slice, crop_slice]
-                img = normalize(img, 1, 99.8, axis=axis_norm)
-                labels, details = model.predict_instances(img)
-                export_egg_json(img_basename, details, model_path, crop_level)
-
-        
-        if opts.check_dot_locations:
-            coords_of_pts = list(zip(*np.where(Y[i])[0:2]))
-            control_pt_coords = [list(zip(*el)) for el in details["coord"]]
-            unplaced_dots = []
-            predictions_to_dots = {}
-            for dot in coords_of_pts:
-                for j, outline in enumerate(control_pt_coords):
-                    dot_at_pt = Point(*dot)
-                    predicted_polygon = Polygon(outline)
-                    if predicted_polygon.contains(dot_at_pt):
-                        if j in predictions_to_dots:
-                            predictions_to_dots[j].append(dot)
-                        else:
-                            predictions_to_dots[j] = [dot]
-                        break
-                unplaced_dots.append(tuple(reversed(dot)))
-            # how to find predicted outlines without dots matched to them?
-            predictions_without_dots = []
-            for i in range(len(control_pt_coords)):
-                if i not in predictions_to_dots:
-                    predictions_without_dots.append(tuple(reversed(details['points'][i])))
-            # draw these dots on a copy of the original image.
-            img_out = np.array(img_orig)
-            for unplaced_dot in unplaced_dots:
-                cv2.circle(img_out, unplaced_dot, radius=1, color=COL_R, thickness=-1)
-            for unmatched_pred in predictions_without_dots:
-                cv2.drawMarker(img_out, unmatched_pred, COL_R, markerType=cv2.MARKER_TILTED_CROSS,
-                    )
-            for outline_idx in predictions_to_dots:
-                if len(predictions_to_dots[outline_idx]) > 1:
-                    color = COL_O
-                else:
-                    color = COL_G
-                for dot in predictions_to_dots[outline_idx]:
-                    cv2.circle(
-                        img_out,
-                        tuple(reversed(dot)),
-                        radius=1,
-                        color=color,
-                        thickness=-1,
-                    )
-            outline_img = get_smoothed_egg_outline_img()
-            if img_out.shape[0] > img_out.shape[1]: # image is tall, so place them horizontally together
-                combined_img = np.zeros((img_out.shape[0], 2*img_out.shape[1] + 20, 3), dtype=np.uint8)
-                combined_img[:, :img_out.shape[1]] = img_out
-                combined_img[:, img_out.shape[1] + 20:] = outline_img
-            else: # image is wide, so place them vertically together
-                combined_img = np.zeros((2*img_out.shape[0] + 20, img_out.shape[1], 3), dtype=np.uint8)
-                combined_img[:img_out.shape[0], :] = img_out
-                combined_img[img_out.shape[0] + 20:, :] = outline_img
-            print('saving the image to this location:', os.path.join(error_dir, f"{img_basename}_dot_compare.png"))
-            cv2.imwrite(os.path.join(error_dir, f"{len(coords_of_pts)}eggs_{img_basename}_dot_compare.png"), combined_img)
-        if opts.vis:
-            img_show = get_smoothed_egg_outline_img()
-            cv2.imwrite(
-                os.path.join(
-                    "debug",
-                    f"errors_{path_components[-2]}_{path_components[-1]}_{os.path.basename(model_path)}.png",
-                ),
-                img_show,
+            img_copy = np.array(img)
+            img_display = cv2.resize(
+                img_orig, (0, 0), fx=display_resize_factor, fy=display_resize_factor
             )
-        if (
-            not opts.skip_err
-            and not opts.no_dots
-            and opts.vis
-            and abs_err >= opts.vis_threshold
-        ):
-            # should I add to this code path?
-            # three of the conditions above seem to still apply here:
-            # 1) calculating error; 2) want visuals, 3) abs_err > some threshold.
-            # the final condition appears too specific for the new case,
-            # because there will be multiple exported images for each
-            # basename.
-            # img_show = img if img.ndim == 2 else img[..., 0]
-            if (
-                not opts.coco
-                and img_basename in saved_error_examples
-                and saved_error_examples[img_basename]["abs_err"] < abs_err
-            ):
-                continue
+            # cv2.imshow("img", cv2.resize(img, (0, 0), fx=0.5, fy=0.5))
+            for clip_level in (16,):
+                # -----Converting image to LAB Color model-----------------------------------
+                lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                # cv2.imshow("lab",lab)
 
-            if opts.dest_dir:
-                out_folder = error_dir
-            else:
-                out_folder = Path(model_path).parent
-            print("trying to make the following directory:", error_dir)
-            Path(error_dir).mkdir(parents=True, exist_ok=True)
-            gt_pts = np.where(Y[i] > 0)
-            # fig = plt.figure()
-            # img_show = img if img.ndim == 2 else img[..., 0]
-            coord, points, prob = details["coord"], details["points"], details["prob"]
-            # plt.imshow(img_show, cmap="gray")
-            # _draw_polygons(coord, points, prob, show_dist=True)
-            for fname in (
-                "temp.png",
-                "debug/temp.png",
-            ):
-                try:
-                    os.unlink(fname)
-                except FileNotFoundError:
-                    pass
+                # -----Splitting the LAB image to different channels-------------------------
+                l, a, b = cv2.split(lab)
+                # cv2.imshow('l_channel', l)
+                # cv2.imshow('a_channel', a)
+                # cv2.imshow('b_channel', b)
 
-            # create_and_save_img(prediction_renderer)
-            # predictions = cv2.imread("debug/temp.png")
-            # plt.close("all")
-            # base_img = cv2.cvtColor(img_orig, cv2.COLOR_RGB2BGR)
-            base_img = np.array(img_orig)
+                # -----Applying CLAHE to L-channel-------------------------------------------
+                clahe = cv2.createCLAHE(clipLimit=clip_level, tileGridSize=(8, 8))
+                cl = clahe.apply(l)
+                # cv2.imshow('CLAHE output', cl)
 
-            def gt_renderer():
-                plt.scatter(gt_pts[1], gt_pts[0], 4, [[1, 0, 0.157]])
+                # -----Merge the CLAHE enhanced L-channel with the a and b channel-----------
+                limg = cv2.merge((cl, a, b))
+                # cv2.imshow('limg', limg)
 
-            if opts.coco:
-                resize_factor = 2.5
-                gt_polygons = []
-                gt_annots = []
-                for annot in coco_data.imgToAnns[img_ids[i]]:
-                    annot = annot["segmentation"][0]
-                    annot = list(zip(annot[::2], annot[1::2]))
-                    annot = [
-                        tuple([int(el * resize_factor) for el in tup]) for tup in annot
-                    ]
-                    gt_annots.append(annot)
-                    annot_as_array = np.array(annot)
-                    gt_polygons.append(Polygon(annot_as_array))
-                    # cv2.drawMarker(
-                    # ground_truth,
-                    # tuple([round(el) for el in gt_centroids[-1].coords[0]]),
-                    # (255, 0, 0),
-                    # markerType=cv2.MARKER_STAR,
-                    # )
-                    # draw_line(ground_truth, [gt_annots[-1]])
-                base_img = cv2.resize(
-                    cv2.cvtColor(img_orig, cv2.COLOR_RGB2BGR),
-                    (0, 0),
-                    fx=resize_factor,
-                    fy=resize_factor,
+                # -----Converting image from LAB Color model to RGB model--------------------
+                # final = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+                # final = apply_brightness_contrast(img, brightness=0, contrast=80)
+                # final = cv2.addWeighted(img, 3, img, 0, 0)
+                final = img
+                # print('dtype before calling scaleabs:', img.dtype)
+                # final = cv2.convertScaleAbs(img, 1.5, 0)
+                # print('image after the contrast adjust:', final)
+                # input()w') as f:
+            #     print('writing')
+            #     print('image:', final[
+                #     f"final (clip level {clip_level})",
+                #     cv2.resize(final, (0, 0), fx=0.5, fy=0.5),
+                # )
+                # cv2.waitKey(0)
+            # np.set_printoptions(threshold=sys.maxsize)
+            # with open('debug1', 'w') as f:
+            #     print('writing')
+            #     print('image:', final[:20, :20], file=f)
+            # exit()
+            img = normalize(final, 1, 99.8, axis=axis_norm)
+            img_copy = normalize(img_copy, 1, 99.8, axis=axis_norm)
+            # DEBUG_GOOD
+            # cv2.imshow("after normalization", cv2.resize(img, (0, 0), fx=0.5, fy=0.5))
+            # cv2.imshow(
+            #     "after normalization (no contrast adjustment)",
+            #     cv2.resize(img_copy, (0, 0), fx=0.5, fy=0.5),
+            # )
+            cv2.waitKey(0)
+            #
+            img = img.astype(np.float32)
+            labels, details = model.predict_instances(img)
+            num_predicted = len(details["points"])
+            print("img %i of %i" % (i+1, tot_num_examples))
+            print("num predicted:", num_predicted)
+            if not opts.skip_err:
+                chamber_type_path = os.path.join(
+                    Path(X_names[i]).parent, "chamber_types.json"
                 )
-                predictions = np.zeros(base_img.shape, dtype=np.uint8)
-                ground_truth = np.zeros(base_img.shape, dtype=np.uint8)
-                predicted_polygons = []
-                predicted_annots = []
+                has_chamber_type = os.path.exists(chamber_type_path)
+                if has_chamber_type:
+                    pass
+                    with open(chamber_type_path) as f:
+                        ct_map = json.load(f)
+                        ct_instance = CT[ct_map[img_basename]].value()
+                        num_labeled = ct_instance.numRows * ct_instance.numCols
+                        if type(ct_instance) == type(CT.large.value()):
+                            num_labeled *= 4
+                elif opts.coco:
+                    num_labeled = len(np.unique(Y[i])) - 1
+                else:
+                    num_labeled = np.sum(Y[i])
+                print("num labeled:", num_labeled)
+                path_components = os.path.normpath(X_names[i]).split(os.sep)
+                abs_err = abs(num_labeled - num_predicted)
+                errors_by_img[f"{path_components[-2]}_{path_components[-1]}"] = abs_err
+                true_values.append(num_labeled)
+            predicted_values.append(num_predicted)
+            if opts.export_egg_json:
+                for crop_level in crop_levels:
+                    crop_slice = slice(0, -crop_level if crop_level else None)
+                    img = img_orig[crop_slice, crop_slice]
+                    img = normalize(img, 1, 99.8, axis=axis_norm)
+                    labels, details = model.predict_instances(img)
+                    export_egg_json(img_basename, details, model_path, crop_level)
+
+            if opts.vis:
+                img_show = cv2.cvtColor(np.array(img_display), cv2.COLOR_RGB2BGR)
+                coord, points, prob = details["coord"], details["points"], details["prob"]
                 for egg_contour in coord:
                     annot = get_interpolated_points(
                         np.expand_dims(
@@ -561,7 +498,16 @@ for model_path in models:
                                 [
                                     tuple(
                                         reversed(
-                                            [int(el * resize_factor) for el in tup]
+                                            [
+                                                int(
+                                                    el
+                                                    * (
+                                                        display_resize_factor
+                                                        / predict_resize_factor
+                                                    )
+                                                )
+                                                for el in tup
+                                            ]
                                         )
                                     )
                                     for tup in zip(*egg_contour)
@@ -570,164 +516,321 @@ for model_path in models:
                             0,
                         )
                     )[0]
-                    predicted_annots.append(annot)
-                    annot_as_array = np.array(annot)
-                    # print('annot?', annot_as_array)
-                    predicted_polygons.append(Polygon(annot_as_array))
-                    draw_line(predictions, [annot])
-                    # cv2.drawMarker(
-                    #     predictions,
-                    #     tuple([round(el) for el in predicted_centroids[-1].coords[0]]),
-                    #     (255, 0, 0),
-                    #     markerType=cv2.MARKER_STAR,
-                    # )
-                # for i, polygon in enumerate(gt_polygons):
-                #     for polygon_to_compare in predicted_polygons:
-                #         if polygon.contains(polygon_to_compare.centroid):
-                #             draw_line(ground_truth, [gt_annots[i]], color=COL_W)
-                #             break
-                #         draw_line(ground_truth, [gt_annots[i]], color=COL_R)
-                draw_polygons_based_on_overlap(
-                    gt_polygons,
-                    gt_annots,
-                    predicted_polygons,
-                    ground_truth,
-                    COL_G,
-                    debug=False,
-                )
-                draw_polygons_based_on_overlap(
-                    predicted_polygons,
-                    predicted_annots,
-                    gt_polygons,
-                    ground_truth,
-                    COL_R,
-                    draw_if_ok=False,
-                    debug=False,
-                    draw_iou_failures=False,
-                )
-                ground_truth = cv2.addWeighted(
-                    base_img,
-                    1,
-                    ground_truth.astype(np.uint8),
-                    0.4,
-                    0,
-                )
-                predictions = cv2.addWeighted(
-                    base_img, 1, predictions.astype(np.uint8), 0.4, 0
-                )
-                # (0, 0),
-                # fx = predictions.shape[1]
+                    draw_line(img_show, [annot])
+                # cv2.imwrite(
+                #     os.path.join(
+                #         "debug",
+                #         f"errors_{path_components[-2]}_{path_components[-1]}_{os.path.basename(model_path)}.png",
+                #     ),
+                #     img_show,
                 # )
-                # cv2.imshow("original image:", base_img)
-                # cv2.imshow("combined", ground_truth)
-                # cv2.imshow("pred", predictions)
-                # cv2.waitKey(0)
-            else:
-                create_and_save_img(gt_renderer)
-                ground_truth = cv2.imread("debug/temp.png")
-                predictions = img_show
-
-            # cv2.imshow("gt", ground_truth)
-            # cv2.waitKey(0)
-
+                cv2.imshow(f'{X_names[i]} (zoom level {predict_resize_factor})', img_show)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+            if opts.check_dot_locations:
+                coords_of_pts = list(zip(*np.where(Y[i])[0:2]))
+                control_pt_coords = [list(zip(*el)) for el in details["coord"]]
+                unplaced_dots = []
+                predictions_to_dots = {}
+                for dot in coords_of_pts:
+                    for j, outline in enumerate(control_pt_coords):
+                        dot_at_pt = Point(*dot)
+                        predicted_polygon = Polygon(outline)
+                        if predicted_polygon.contains(dot_at_pt):
+                            if j in predictions_to_dots:
+                                predictions_to_dots[j].append(dot)
+                            else:
+                                predictions_to_dots[j] = [dot]
+                            break
+                    unplaced_dots.append(tuple(reversed(dot)))
+                # how to find predicted outlines without dots matched to them?
+                predictions_without_dots = []
+                for i in range(len(control_pt_coords)):
+                    if i not in predictions_to_dots:
+                        predictions_without_dots.append(tuple(reversed(details['points'][i])))
+                # draw these dots on a copy of the original image.
+                img_out = np.array(img_orig)
+                for unplaced_dot in unplaced_dots:
+                    cv2.circle(img_out, unplaced_dot, radius=1, color=COL_R, thickness=-1)
+                for unmatched_pred in predictions_without_dots:
+                    cv2.drawMarker(img_out, unmatched_pred, COL_R, markerType=cv2.MARKER_TILTED_CROSS,
+                        )
+                for outline_idx in predictions_to_dots:
+                    if len(predictions_to_dots[outline_idx]) > 1:
+                        color = COL_O
+                    else:
+                        color = COL_G
+                    for dot in predictions_to_dots[outline_idx]:
+                        cv2.circle(
+                            img_out,
+                            tuple(reversed(dot)),
+                            radius=1,
+                            color=color,
+                            thickness=-1,
+                        )
+                outline_img = get_smoothed_egg_outline_img()
+                if img_out.shape[0] > img_out.shape[1]: # image is tall, so place them horizontally together
+                    combined_img = np.zeros((img_out.shape[0], 2*img_out.shape[1] + 20, 3), dtype=np.uint8)
+                    combined_img[:, :img_out.shape[1]] = img_out
+                    combined_img[:, img_out.shape[1] + 20:] = outline_img
+                else: # image is wide, so place them vertically together
+                    combined_img = np.zeros((2*img_out.shape[0] + 20, img_out.shape[1], 3), dtype=np.uint8)
+                    combined_img[:img_out.shape[0], :] = img_out
+                    combined_img[img_out.shape[0] + 20:, :] = outline_img
+                print('saving the image to this location:', os.path.join(error_dir, f"{img_basename}_dot_compare.png"))
+                cv2.imwrite(os.path.join(error_dir, f"{len(coords_of_pts)}eggs_{img_basename}_dot_compare.png"), combined_img)
+            if opts.vis:
+                img_show = get_smoothed_egg_outline_img()
+                cv2.imwrite(
+                    os.path.join(
+                        "debug",
+                        f"errors_{path_components[-2]}_{path_components[-1]}_{os.path.basename(model_path)}.png",
+                    ),
+                    img_show,
+                )
             if (
-                ground_truth.shape[0] >= ground_truth.shape[1]
-            ):  # the images are taller than they are wide
-                print("original base image shape:", base_img.shape)
-                print(
-                    "rescaling factor for x:", ground_truth.shape[1] / base_img.shape[1]
-                )
-                print("and for y:", ground_truth.shape[0] / base_img.shape[0])
-                base_img = cv2.cvtColor(
-                    cv2.resize(
-                        base_img,
-                        (0, 0),
-                        fx=ground_truth.shape[1] / base_img.shape[1],
-                        fy=ground_truth.shape[0] / base_img.shape[0],
-                    ),
-                    cv2.COLOR_RGB2BGR,
-                )
-                predictions = cv2.resize(
-                    predictions,
-                    (0, 0),
-                    fx=ground_truth.shape[1] / predictions.shape[1],
-                    fy=ground_truth.shape[0] / predictions.shape[0],
-                )
-                combined_img = np.zeros(
-                    (
-                        max(ground_truth.shape[0], predictions.shape[0]),
-                        ground_truth.shape[1] + predictions.shape[1] * 2 + 2 * 10,
-                        3,
-                    )
-                )
-                print("base image after resize:", base_img.shape)
-                combined_img[:, : ground_truth.shape[1]] = ground_truth
-                print("combined image shape:", combined_img.shape)
-                print("predictions shape:", predictions.shape)
-                print("ground truth shape:", ground_truth.shape)
-                print("base img shape:", base_img.shape)
-                combined_img[
-                    :, ground_truth.shape[1] + 10 : 2 * ground_truth.shape[1] + 10
-                ] = base_img
-                combined_img[:, 2 * ground_truth.shape[1] + 20 :] = predictions
-            else:
-                base_img = cv2.cvtColor(
-                    cv2.resize(
-                        base_img,
-                        (0, 0),
-                        fx=ground_truth.shape[1] / base_img.shape[1],
-                        fy=ground_truth.shape[0] / base_img.shape[0],
-                    ),
-                    cv2.COLOR_RGB2BGR,
-                )
-                predictions = cv2.resize(
-                    predictions,
-                    (0, 0),
-                    fx=ground_truth.shape[1] / predictions.shape[1],
-                    fy=ground_truth.shape[0] / predictions.shape[0],
-                )
-                combined_img = np.zeros(
-                    (
-                        ground_truth.shape[0] + predictions.shape[0] * 2 + 2 * 10,
-                        max(ground_truth.shape[1], predictions.shape[1]),
-                        3,
-                    )
-                )
-                combined_img[: ground_truth.shape[0], :] = ground_truth
-                combined_img[
-                    ground_truth.shape[0] + 10 : 2 * ground_truth.shape[0] + 10, :
-                ] = base_img
-                combined_img[2 * ground_truth.shape[0] + 20 :, :] = predictions
-            # save the combined image with a filename containing the
-            # original filename AND the number of predicted and labeled eggs.
-            # also need to save the name of the model that was run...
-            # will all that info make the filename too long?
-            # what alternative is there?
-            # perhaps just to save one representative error example per image being checked.
-            # we keep a mapping of image name to level of error, and if the previous was smaller
-            # than the current error, then we overwrite. This seems to make sense
-            # as far as keeping the storage footprint smaller.
-            # think this is now implemented...
-            if img_basename in saved_error_examples:
-                os.unlink(saved_error_examples[img_basename]["path"])
-            save_path = os.path.join(
-                error_dir,
-                "%iabs_%s_%s_%ipredicted_%ilabeled.png"
-                % (
-                    abs_err,
-                    img_basename.split(".jpg")[0],
-                    os.path.basename(model_path),
-                    num_predicted,
-                    num_labeled,
-                ),
-            )
-            saved_error_examples[os.path.basename(X_names[i])] = {
-                "path": save_path,
-                "abs_err": abs_err,
-            }
-            cv2.imwrite(save_path, combined_img)
+                not opts.skip_err
+                and not opts.no_dots
+                and opts.vis
+                and abs_err >= opts.vis_threshold
+            ):
+                # should I add to this code path?
+                # three of the conditions above seem to still apply here:
+                # 1) calculating error; 2) want visuals, 3) abs_err > some threshold.
+                # the final condition appears too specific for the new case,
+                # because there will be multiple exported images for each
+                # basename.
+                # img_show = img if img.ndim == 2 else img[..., 0]
+                if (
+                    not opts.coco
+                    and img_basename in saved_error_examples
+                    and saved_error_examples[img_basename]["abs_err"] < abs_err
+                ):
+                    continue
 
-        print("time per prediction:", timeit.default_timer() - predict_start)
+                if opts.dest_dir:
+                    out_folder = error_dir
+                else:
+                    out_folder = Path(model_path).parent
+                print("trying to make the following directory:", error_dir)
+                Path(error_dir).mkdir(parents=True, exist_ok=True)
+                gt_pts = np.where(Y[i] > 0)
+                # fig = plt.figure()
+                # img_show = img if img.ndim == 2 else img[..., 0]
+                coord, points, prob = details["coord"], details["points"], details["prob"]
+                # plt.imshow(img_show, cmap="gray")
+                # _draw_polygons(coord, points, prob, show_dist=True)
+                for fname in (
+                    "temp.png",
+                    "debug/temp.png",
+                ):
+                    try:
+                        os.unlink(fname)
+                    except FileNotFoundError:
+                        pass
+
+                # create_and_save_img(prediction_renderer)
+                # predictions = cv2.imread("debug/temp.png")
+                # plt.close("all")
+                # base_img = cv2.cvtColor(img_orig, cv2.COLOR_RGB2BGR)
+                base_img = np.array(img_orig)
+
+                def gt_renderer():
+                    plt.scatter(gt_pts[1], gt_pts[0], 4, [[1, 0, 0.157]])
+
+                if opts.coco:
+                    resize_factor = 2.5
+                    gt_polygons = []
+                    gt_annots = []
+                    for annot in coco_data.imgToAnns[img_ids[i]]:
+                        annot = annot["segmentation"][0]
+                        annot = list(zip(annot[::2], annot[1::2]))
+                        annot = [
+                            tuple([int(el * resize_factor) for el in tup]) for tup in annot
+                        ]
+                        gt_annots.append(annot)
+                        annot_as_array = np.array(annot)
+                        gt_polygons.append(Polygon(annot_as_array))
+                        # cv2.drawMarker(
+                        # ground_truth,
+                        # tuple([round(el) for el in gt_centroids[-1].coords[0]]),
+                        # (255, 0, 0),
+                        # markerType=cv2.MARKER_STAR,
+                        # )
+                        # draw_line(ground_truth, [gt_annots[-1]])
+                    base_img = cv2.resize(
+                        cv2.cvtColor(img_orig, cv2.COLOR_RGB2BGR),
+                        (0, 0),
+                        fx=resize_factor,
+                        fy=resize_factor,
+                    )
+                    predictions = np.zeros(base_img.shape, dtype=np.uint8)
+                    ground_truth = np.zeros(base_img.shape, dtype=np.uint8)
+                    predicted_polygons = []
+                    predicted_annots = []
+                    for egg_contour in coord:
+                        annot = get_interpolated_points(
+                            np.expand_dims(
+                                np.array(
+                                    [
+                                        tuple(
+                                            reversed(
+                                                [int(el * resize_factor) for el in tup]
+                                            )
+                                        )
+                                        for tup in zip(*egg_contour)
+                                    ]
+                                ).T,
+                                0,
+                            )
+                        )[0]
+                        predicted_annots.append(annot)
+                        annot_as_array = np.array(annot)
+                        # print('annot?', annot_as_array)
+                        predicted_polygons.append(Polygon(annot_as_array))
+                        draw_line(predictions, [annot])
+                        # cv2.drawMarker(
+                        #     predictions,
+                        #     tuple([round(el) for el in predicted_centroids[-1].coords[0]]),
+                        #     (255, 0, 0),
+                        #     markerType=cv2.MARKER_STAR,
+                        # )
+                    # for i, polygon in enumerate(gt_polygons):
+                    #     for polygon_to_compare in predicted_polygons:
+                    #         if polygon.contains(polygon_to_compare.centroid):
+                    #             draw_line(ground_truth, [gt_annots[i]], color=COL_W)
+                    #             break
+                    #         draw_line(ground_truth, [gt_annots[i]], color=COL_R)
+                    draw_polygons_based_on_overlap(
+                        gt_polygons,
+                        gt_annots,
+                        predicted_polygons,
+                        ground_truth,
+                        COL_G,
+                        debug=False,
+                    )
+                    draw_polygons_based_on_overlap(
+                        predicted_polygons,
+                        predicted_annots,
+                        gt_polygons,
+                        ground_truth,
+                        COL_R,
+                        draw_if_ok=False,
+                        debug=False,
+                        draw_iou_failures=False,
+                    )
+                    ground_truth = cv2.addWeighted(
+                        base_img,
+                        1,
+                        ground_truth.astype(np.uint8),
+                        0.4,
+                        0,
+                    )
+                    predictions = cv2.addWeighted(
+                        base_img, 1, predictions.astype(np.uint8), 0.4, 0
+                    )
+                    # (0, 0),
+                    # fx = predictions.shape[1]
+                    # )
+                    # cv2.imshow("original image:", base_img)
+                    # cv2.imshow("combined", ground_truth)
+                    # cv2.imshow("pred", predictions)
+                    # cv2.waitKey(0)
+                else:
+                    create_and_save_img(gt_renderer)
+                    ground_truth = cv2.imread("debug/temp.png")
+                    predictions = img_show
+                # cv2.imshow("gt", ground_truth)
+                # cv2.waitKey(0)
+
+                if (
+                    ground_truth.shape[0] >= ground_truth.shape[1]
+                ):  # the images are taller than they are wide
+                    base_img = cv2.cvtColor(
+                        cv2.resize(
+                            base_img,
+                            (0, 0),
+                            fx=ground_truth.shape[1] / base_img.shape[1],
+                            fy=ground_truth.shape[0] / base_img.shape[0],
+                        ),
+                        cv2.COLOR_RGB2BGR,
+                    )
+                    predictions = cv2.resize(
+                        predictions,
+                        (0, 0),
+                        fx=ground_truth.shape[1] / predictions.shape[1],
+                        fy=ground_truth.shape[0] / predictions.shape[0],
+                    )
+                    combined_img = np.zeros(
+                        (
+                            max(ground_truth.shape[0], predictions.shape[0]),
+                            ground_truth.shape[1] + predictions.shape[1] * 2 + 2 * 10,
+                            3,
+                        )
+                    )
+                    combined_img[:, : ground_truth.shape[1]] = ground_truth
+                    combined_img[
+                        :, ground_truth.shape[1] + 10 : 2 * ground_truth.shape[1] + 10
+                    ] = base_img
+                    combined_img[:, 2 * ground_truth.shape[1] + 20 :] = predictions
+                else:
+                    base_img = cv2.cvtColor(
+                        cv2.resize(
+                            base_img,
+                            (0, 0),
+                            fx=ground_truth.shape[1] / base_img.shape[1],
+                            fy=ground_truth.shape[0] / base_img.shape[0],
+                        ),
+                        cv2.COLOR_RGB2BGR,
+                    )
+                    predictions = cv2.resize(
+                        predictions,
+                        (0, 0),
+                        fx=ground_truth.shape[1] / predictions.shape[1],
+                        fy=ground_truth.shape[0] / predictions.shape[0],
+                    )
+                    combined_img = np.zeros(
+                        (
+                            ground_truth.shape[0] + predictions.shape[0] * 2 + 2 * 10,
+                            max(ground_truth.shape[1], predictions.shape[1]),
+                            3,
+                        )
+                    )
+                    combined_img[: ground_truth.shape[0], :] = ground_truth
+                    combined_img[
+                        ground_truth.shape[0] + 10 : 2 * ground_truth.shape[0] + 10, :
+                    ] = base_img
+                    combined_img[2 * ground_truth.shape[0] + 20 :, :] = predictions
+                # save the combined image with a filename containing the
+                # original filename AND the number of predicted and labeled eggs.
+                # also need to save the name of the model that was run...
+                # will all that info make the filename too long?
+                # what alternative is there?
+                # perhaps just to save one representative error example per image being checked.
+                # we keep a mapping of image name to level of error, and if the previous was smaller
+                # than the current error, then we overwrite. This seems to make sense
+                # as far as keeping the storage footprint smaller.
+                # think this is now implemented...
+                if img_basename in saved_error_examples:
+                    os.unlink(saved_error_examples[img_basename]["path"])
+                save_path = os.path.join(
+                    error_dir,
+                    "%iabs_%s_%s_%ipredicted_%ilabeled.png"
+                    % (
+                        abs_err,
+                        img_basename.split(".jpg")[0],
+                        os.path.basename(model_path),
+                        num_predicted,
+                        num_labeled,
+                    ),
+                )
+                saved_error_examples[os.path.basename(X_names[i])] = {
+                    "path": save_path,
+                    "abs_err": abs_err,
+                }
+                cv2.imwrite(save_path, combined_img)
+
+            print("time per prediction:", timeit.default_timer() - predict_start)
     # if it's running in batch mode, need to save the final error stats
     # for each model. Keep them in the same JSON file.
     if not opts.skip_err:

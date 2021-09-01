@@ -3,11 +3,11 @@ from glob import glob
 import json
 import os
 from statistics import ttest_ind, ttest_rel
-
 import numpy as np
 
 parser = argparse.ArgumentParser(
-    description="Run t-test comparison of results from" " two SplineDist learning experiments"
+    description="Run t-test comparison of results from"
+    " two SplineDist learning experiments"
 )
 parser.add_argument("dir1", help="Folder containing first set of error results")
 parser.add_argument("dir2", help="Folder containing second set of error results")
@@ -53,9 +53,10 @@ def folders_in(path_to_parent):
         if os.path.isdir(os.path.join(path_to_parent, fname)):
             yield os.path.join(path_to_parent, fname)
 
+
 def parse_error_for_dir(dir_name, index):
     error_files = glob(os.path.join(dir_name, "*_errors.json"))
-    print('error files:', error_files)
+    print("error files:", error_files)
     for sub_folder in folders_in(dir_name):
         error_files += glob(os.path.join(sub_folder, "*_errors.json"))
     outlier_filename = os.path.join(dir_name, "outliers.txt")
@@ -66,7 +67,7 @@ def parse_error_for_dir(dir_name, index):
         outliers_for_dir = None
     if not opts.paired_name_map or opts.paired_name_map and index == 0:
         for error_file in error_files:
-            print('processing a single error')
+            print("processing a single error")
             process_single_error(index, error_file, outliers_for_dir)
             if opts.paired_name_map:
                 pairing_order.append(os.path.basename(error_file).split("_errors")[0])
@@ -77,9 +78,10 @@ def parse_error_for_dir(dir_name, index):
                 index, os.path.join(dir_name, error_file), outliers_for_dir
             )
 
+
 def parse_errors():
     for i, dir_name in enumerate((opts.dir1, opts.dir2)):
-        print('dir name:', dir_name)
+        print("dir name:", dir_name)
         parse_error_for_dir(dir_name, i)
 
 

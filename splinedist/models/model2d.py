@@ -15,7 +15,7 @@ from splinedist.geometry.geom2d import dist_to_coord, polygons_to_label
 from splinedist.models.fcrn import FCRN_A
 from splinedist.models.unet_block import UNet, UNetFromTF
 from splinedist.nms import non_maximum_suppression
-from splinedist.utils import _is_power_of_2, data_dir
+from splinedist.utils import _is_power_of_2, data_dir, grid_generator
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -31,24 +31,39 @@ def square(x):
     return torch.pow(x, 2)
 
 
-def masked_loss(mask, n_params, penalty, reg_weight, norm_by_mask):
+def masked_loss(mask, n_params, penalty, reg_weight, norm_by_mask, config):
     def loss(y_true, y_pred):
         return penalty(y_true - y_pred)
 
     return generic_masked_loss(
-        mask, n_params, loss, reg_weight=reg_weight, norm_by_mask=norm_by_mask
+        mask,
+        n_params,
+        loss,
+        reg_weight=reg_weight,
+        norm_by_mask=norm_by_mask,
+        config=config,
     )
 
 
-def masked_loss_mae(mask, n_params, reg_weight=0, norm_by_mask=True):
+def masked_loss_mae(mask, n_params, reg_weight=0, norm_by_mask=True, config=None):
     return masked_loss(
-        mask, n_params, torch.abs, reg_weight=reg_weight, norm_by_mask=norm_by_mask
+        mask,
+        n_params,
+        torch.abs,
+        reg_weight=reg_weight,
+        norm_by_mask=norm_by_mask,
+        config=config,
     )
 
 
-def masked_loss_mse(mask, n_params, reg_weight=0, norm_by_mask=True):
+def masked_loss_mse(mask, n_params, reg_weight=0, norm_by_mask=True, config=None):
     return masked_loss(
-        mask, n_params, square, reg_weight=reg_weight, norm_by_mask=norm_by_mask
+        mask,
+        n_params,
+        square,
+        reg_weight=reg_weight,
+        norm_by_mask=norm_by_mask,
+        config=config,
     )
 
 
@@ -78,6 +93,7 @@ def generic_masked_loss(
     norm_by_mask=True,
     reg_weight=0,
     reg_penalty=torch.abs,
+    config=None,
 ):
     def _loss(y_true, y_pred):
         y_pred = torch.reshape(
@@ -92,7 +108,14 @@ def generic_masked_loss(
         y_pred = torch.stack((x, y), dim=-1)
 
         M = n_params // 2
-        grid = np.load(os.path.join(data_dir(), "grid_" + str(M) + ".npy"))
+        grid_file_name = os.path.join(
+            data_dir(),
+            "grid_" + str(M) + f"_{y_pred.shape[1]}_{y_pred.shape[2]}" ".npy",
+        )
+        if not os.path.exists(grid_file_name):
+            grid_generator(M, (y_pred.shape[1]*2, y_pred.shape[2]*2), config.grid)
+        grid = np.load(grid_file_name)
+
         grid = torch.from_numpy(grid).float().to(DEVICE)
         grid = torch.repeat_interleave(grid, y_pred.shape[0], dim=0)
         c_pred = grid + y_pred
@@ -233,6 +256,7 @@ class SplineDist2D(nn.Module):
                 dist_mask,
                 n_params=self.config.n_params,
                 reg_weight=self.config.train_background_reg,
+                config=self.config,
             )(dist_true, dist_pred)
 
         self.dist_loss = dist_loss
@@ -417,7 +441,7 @@ class SplineDist2D(nn.Module):
         normalizer=None,
         n_tiles=None,
         show_tile_progress=True,
-        **predict_kwargs
+        **predict_kwargs,
     ):
         # total_cuda_time = 0
         if n_tiles is None:
@@ -606,7 +630,7 @@ class SplineDist2D(nn.Module):
             normalizer=normalizer,
             n_tiles=n_tiles,
             show_tile_progress=show_tile_progress,
-            **predict_kwargs
+            **predict_kwargs,
         )
         finals = self._instances_from_prediction(
             _shape_inst,
@@ -615,7 +639,7 @@ class SplineDist2D(nn.Module):
             prob_thresh=prob_thresh,
             nms_thresh=nms_thresh,
             overlap_label=overlap_label,
-            **nms_kwargs
+            **nms_kwargs,
         )
         # print('total predict time:', timeit.default_timer() - start_t)
         return finals
@@ -628,7 +652,7 @@ class SplineDist2D(nn.Module):
         prob_thresh=None,
         nms_thresh=None,
         overlap_label=None,
-        **nms_kwargs
+        **nms_kwargs,
     ):
         if prob_thresh is None:
             prob_thresh = self.thresholds.prob
@@ -644,7 +668,7 @@ class SplineDist2D(nn.Module):
             grid=self.config.grid,
             prob_thresh=prob_thresh,
             nms_thresh=nms_thresh,
-            **nms_kwargs
+            **nms_kwargs,
         )
         labels = polygons_to_label(coord, prob, inds, shape=img_shape)
         # sort 'inds' such that ids in 'labels' map to entries in polygon dictionary entries

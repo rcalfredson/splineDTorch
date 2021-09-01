@@ -172,7 +172,7 @@ class SplineDistDataStatic(SplineDistDataBase):
         self.check_for_duplicates = False
 
     def __getitem__(self, i):
-        idx = self.batch(i)
+        idx = self.batch()
         if i % self.length == 0:
             self.indices_already_checked = set()
         if self.check_for_duplicates:
@@ -239,6 +239,7 @@ class SplineDistData2D(SplineDistDataBase):
         shape_completion=False,
         augmenter=None,
         skip_empties=False,
+        sample_patches=True,
         foreground_prob=0,
         n_samples=1,
         skip_dist_prob_calc=False,
@@ -267,21 +268,28 @@ class SplineDistData2D(SplineDistDataBase):
         self.sd_mode = "opencl" if self.use_gpu else "cpp"
 
         self.skip_empties = skip_empties
+        self.sample_patches = sample_patches
         self.contoursize_max = contoursize_max
         self.n_samples = n_samples
         self.skip_dist_prob_calc = skip_dist_prob_calc
 
     def __getitem__(self, i):
         # start_t = timeit.default_timer()
-        idx = self.batch(i)
+        idx = self.batch()
         # original sample_patches
         # arrays = [sample_patches((self.Y[k],) + self.channels_as_tuple(self.X[k]),
         #                          patch_size=self.patch_size, n_samples=1,
         #                          valid_inds=self.get_valid_inds(k)) for k in idx]
 
         # random rotation sample_patches
+
         self.arrays = [
-            sample_patches_rot((self.Y[k], self.X[k]), patch_size=self.patch_size, skip_empties=self.skip_empties)
+            sample_patches_rot(
+                (self.Y[k], self.X[k]),
+                patch_size=self.patch_size,
+                skip_empties=self.skip_empties,
+                bypass=not self.sample_patches,
+            )
             for k in idx
         ]
         # np.set_printoptions(threshold=sys.maxsize)
@@ -327,7 +335,6 @@ class SplineDistData2D(SplineDistDataBase):
         if X.ndim == 3:  # input image has no channel axis
             X = np.expand_dims(X, -1)
 
-
         if not self.skip_dist_prob_calc:
             prob = np.stack([edt_prob(lbl[self.b]) for lbl in Y])
 
@@ -366,7 +373,7 @@ class SplineDistData2D(SplineDistDataBase):
             # pr.print_stats(sort="time")
             # end_time = timeit.default_timer()
             # print(
-                # f"time needed for post-proc calcs: {end_time - sample_patch_time:.3f}"
+            # f"time needed for post-proc calcs: {end_time - sample_patch_time:.3f}"
             # )
             # print(f"total time: {end_time - start_t:.3f}")
             # input()

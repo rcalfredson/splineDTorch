@@ -22,7 +22,9 @@ class Config:
         self.lr_patience = self.set_conf_param("lr_patience")
         self.n_channel_in = n_channel_in
         self.n_dim = int(self.set_conf_param("n_dim"))
+        self.sample_patches = self.set_conf_param('sample_patches')
         self.skip_empties = self.set_conf_param('skip_empties')
+        self.skip_partials = self.set_conf_param('skip_partials')
         self.n_params = 2 * int(self.set_conf_param("n_control_points"))
         self.train_background_reg = int(self.set_conf_param("train_background_reg"))
         self.train_batch_size = int(self.set_conf_param("train_batch_size"))

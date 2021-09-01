@@ -76,7 +76,7 @@ def edt_prob(lbl_img, anisotropy=None):
 
 
 def calculate_extents(lbl, func=np.median):
-    """ Aggregate bounding box sizes of objects in label images. """
+    """Aggregate bounding box sizes of objects in label images."""
     if isinstance(lbl, (tuple, list)) or (
         isinstance(lbl, np.ndarray) and lbl.ndim == 4
     ):
@@ -112,14 +112,14 @@ def wrapIndex(t, k, M, half_support):
     return wrappedT
 
 
-
-
 def data_dir(must_exist=True):
-    prospective_dir = os.path.join("data_by_host", f"{platform.node()}_{onload_ts}".replace(":", '-'))
+    prospective_dir = os.path.join(
+        "data_by_host", f"{platform.node()}_{onload_ts}".replace(":", "-")
+    )
     if (must_exist and os.path.isdir(prospective_dir)) or not must_exist:
         return prospective_dir
     elif must_exist and not os.path.isdir(prospective_dir):
-        return './'
+        return "./"
 
 
 def phi_generator(M, contoursize_max, debug=False):
@@ -148,7 +148,13 @@ def grid_generator(M, patch_size, grid_subsampled):
 
     grid = grid[:, 0 :: grid_subsampled[0], 0 :: grid_subsampled[1]]
     grid = grid.astype(np.float32)
-    np.save(os.path.join(data_dir(), "grid_" + str(M) + ".npy"), grid)
+    np.save(
+        os.path.join(
+            data_dir(),
+            "grid_" + str(M) + f"_{int(patch_size[0]/2)}_{int(patch_size[1]/2)}" ".npy",
+        ),
+        grid,
+    )
     return
 
 
@@ -203,8 +209,16 @@ def normalize(x, pmin=3, pmax=99.8, ind_norm=True, clip=False, eps=1e-20):
         )
 
     except AttributeError:
-        mi = torch.tensor([percentile(x[:, :, i], pmin) for i in range(x.shape[-1])]).float().to(DEVICE)
-        ma = torch.tensor([percentile(x[:, :, i], pmax) for i in range(x.shape[-1])]).float().to(DEVICE)
+        mi = (
+            torch.tensor([percentile(x[:, :, i], pmin) for i in range(x.shape[-1])])
+            .float()
+            .to(DEVICE)
+        )
+        ma = (
+            torch.tensor([percentile(x[:, :, i], pmax) for i in range(x.shape[-1])])
+            .float()
+            .to(DEVICE)
+        )
     return normalize_mi_ma(x, mi, ma, clip=clip, eps=eps)
 
 

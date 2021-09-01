@@ -1,0 +1,14 @@
+{
+    "backbone": "unet_reduced",
+    "focused_patch_proportion": 0.85,
+    "skip_partials": true,
+    "skip_empties": false,
+    "train_batch_size": 8,
+    "train_epochs": 600,
+    "train_learning_rate": 0.0003,
+    "train_steps_per_epoch": null,
+    "validation_batch_size": 1,
+    "validation_steps_per_epoch": null,
+    "zoom_min": 0.9,
+    "zoom_max": 1.1
+}
