@@ -74,6 +74,7 @@ class Looper:
                 augmenter=self.augmenter,
                 skip_empties=self.config.skip_empties,
                 sample_patches=self.config.sample_patches,
+                focused_patch_proportion=self.config.focused_patch_proportion,
                 **self.data_kwargs,
             )
         else:
@@ -99,6 +100,7 @@ class Looper:
             augmenter=self.augmenter,
             skip_empties=self.config.skip_empties,
             sample_patches=self.config.sample_patches,
+            focused_patch_proportion=self.config.focused_patch_proportion,
             **self.data_kwargs,
         )
         data_val_source = [[], []]

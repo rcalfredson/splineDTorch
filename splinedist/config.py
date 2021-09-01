@@ -17,6 +17,7 @@ class Config:
             contoursize_max if contoursize_max is None else int(contoursize_max)
         )
         self.deform_sigma = float(self.set_conf_param("deform_sigma"))
+        self.focused_patch_proportion = self.set_conf_param('focused_patch_proportion')
         self.grid = normalize_grid(self.set_conf_param("grid_subsampling_factor"), 2)
         self.lr_reduct_factor = self.set_conf_param("lr_reduct_factor")
         self.lr_patience = self.set_conf_param("lr_patience")

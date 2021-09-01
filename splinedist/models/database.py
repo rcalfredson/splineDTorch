@@ -240,6 +240,7 @@ class SplineDistData2D(SplineDistDataBase):
         augmenter=None,
         skip_empties=False,
         sample_patches=True,
+        focused_patch_proportion=0,
         foreground_prob=0,
         n_samples=1,
         skip_dist_prob_calc=False,
@@ -269,6 +270,7 @@ class SplineDistData2D(SplineDistDataBase):
 
         self.skip_empties = skip_empties
         self.sample_patches = sample_patches
+        self.focused_patch_proportion = focused_patch_proportion
         self.contoursize_max = contoursize_max
         self.n_samples = n_samples
         self.skip_dist_prob_calc = skip_dist_prob_calc
@@ -289,6 +291,7 @@ class SplineDistData2D(SplineDistDataBase):
                 patch_size=self.patch_size,
                 skip_empties=self.skip_empties,
                 bypass=not self.sample_patches,
+                focused_patch_proportion=self.focused_patch_proportion
             )
             for k in idx
         ]
