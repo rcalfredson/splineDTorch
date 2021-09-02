@@ -17,8 +17,9 @@ import json
 import numpy as np
 import os
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageDraw
 import platform
+from pycocotools.coco import COCO
 import random
 import shutil
 import signal
@@ -42,7 +43,7 @@ from util import background_color, fill_in_blanks, get_border_vals
 import scipy.ndimage as ndi
 from tqdm import tqdm
 
-# python trainByBatchLinux.py 10 "--config configs/unet_reduced_backbone_arena_wells.json --plot --val_interval 4 arena_pit/scaled_25%"
+# python trainByBatchLinux.py 10 "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4"
 
 sys_type = platform.system()
 win_drive_letter = "P"
@@ -73,6 +74,12 @@ def options():
         " stored (as specified by data_path). Defaults to Robert/splineDist/data"
         " on Synology3.",
         default=DATA_BASE_DIR,
+    )
+    parser.add_argument(
+        "--coco_file_path",
+        help="path to COCO file containing annotation data that corresponds to the"
+        " images used during training, which are used to generate masks dynamically"
+        " in place of the masks stored in the folder associated with 'data_path.'",
     )
     parser.add_argument(
         "--config",
@@ -109,30 +116,55 @@ opts = options()
 if not os.path.isdir(data_dir(must_exist=False)):
     Path(data_dir(must_exist=False)).mkdir(parents=True, exist_ok=True)
 X = sorted(glob(os.path.join(DATA_BASE_DIR, opts.data_path, "images/*.tif")))
-Y = sorted(glob(os.path.join(DATA_BASE_DIR, opts.data_path, "masks/*.tif")))
-assert all(Path(x).name == Path(y).name for x, y in zip(X, Y))
+img_filepaths = X
+masks = {k: [] for k in X}
 X = list(map(imread, X))
-Y = list(map(imread, Y))
-resize_factor = 0.744
-# X = list(
-#     map(
-#         functools.partial(cv2.resize, dsize=(0, 0), fx=resize_factor, fy=resize_factor),
-#         X,
-#     )
-# )
-# Y = list(
-#     map(
-#         functools.partial(
-#             cv2.resize,
-#             dsize=(0, 0),
-#             fx=resize_factor,
-#             fy=resize_factor,
-#             interpolation=cv2.INTER_NEAREST,
-#         ),
-#         Y,
-#     ),
-# )
 
+
+def create_masks(filepath, coco_data, img_id, orig_img, num_masks=6):
+    img_data = coco_data.imgs[img_id]
+    for _ in range(num_masks):
+        maskImg = Image.new("L", (img_data["width"], img_data["height"]), 0)
+        annotations = coco_data.getAnnIds(imgIds=[img_id])
+        random.shuffle(annotations)
+        for i, ann in enumerate(annotations):
+            ann = coco_data.anns[ann]
+            ImageDraw.Draw(maskImg).polygon(
+                [int(el) for el in ann["segmentation"][0]],
+                outline=i + 1,
+                fill=i + 1,
+            )
+            if len(ann["segmentation"]) > 1:
+                for seg in ann["segmentation"][1:]:
+                    ImageDraw.Draw(maskImg).polygon(
+                        [int(el) for el in seg], outline=0, fill=0
+                    )
+        maskImg = np.array(maskImg)
+        masks[filepath].append(maskImg)
+
+
+if opts.coco_file_path:
+    coco_data = COCO(opts.coco_file_path)
+    for i, filepath in enumerate(img_filepaths):
+        img_basename = os.path.basename(filepath)
+
+        for img_id in coco_data.imgs:
+            if (
+                os.path.splitext(coco_data.imgs[img_id]["file_name"])[0]
+                == os.path.splitext(img_basename)[0]
+            ):
+                create_masks(filepath, coco_data, img_id, X[i])
+else:
+    mask_filepaths = sorted(
+        glob(os.path.join(DATA_BASE_DIR, opts.data_path, "masks/*.tif"))
+    )
+    for filepath in img_filepaths:
+        img_basename = os.path.basename(filepath)
+        mask_filepath = os.path.join(
+            DATA_BASE_DIR, opts.data_path, "masks", img_basename
+        )
+        assert os.path.exists(mask_filepath)
+        masks[filepath].append(imread(mask_filepath))
 n_channel = 1 if X[0].ndim == 2 else X[0].shape[-1]
 axis_norm = (0, 1)  # normalize channels independently
 
@@ -144,22 +176,25 @@ if n_channel > 1:
     sys.stdout.flush()
 
 # X = [normalize(x, 1, 99.8, axis=axis_norm) for x in tqdm(X)]
-Y = [fill_label_holes(y) for y in tqdm(Y)]
+for k in masks:
+    for i, arr in enumerate(masks[k]):
+        masks[k][i] = fill_label_holes(arr)
 
 assert len(X) > 1, "not enough training data"
-rng = np.random.RandomState(42)
+rng = np.random.RandomState(seed=None)  # 42)
+
 ind = rng.permutation(len(X))
 n_val = max(1, int(round(0.21 * len(ind))))
 ind_train, ind_val = ind[:-n_val], ind[-n_val:]
-X_val, Y_val = [X[i] for i in ind_val], [Y[i] for i in ind_val]
-# X_val = [normalize(x, 1, 99.8, axis=axis_norm) for x in tqdm(X_val)]
-X_trn, Y_trn = [X[i] for i in ind_train], [Y[i] for i in ind_train]
+
+X_val, Y_val = [X[i] for i in ind_val], [masks[img_filepaths[i]] for i in ind_val]
+X_trn, Y_trn = [X[i] for i in ind_train], [masks[img_filepaths[i]] for i in ind_train]
 print("number of images: %3d" % len(X))
 print("- training:       %3d" % len(X_trn))
 print("- validation:     %3d" % len(X_val))
 
 i = min(9, len(X) - 1)
-img, lbl = X[i], Y[i]
+img, lbl = X[i], masks[img_filepaths[0]]
 assert img.ndim in (2, 3)
 img = img if (img.ndim == 2 or img.shape[-1] == 3) else img[..., 0]
 
@@ -167,7 +202,9 @@ M = 8
 n_params = 2 * M
 grid = (2, 2)
 
-contoursize_max = get_contoursize_max(Y_trn)
+contoursize_max = get_contoursize_max(
+    [mask for sublist in masks.values() for mask in sublist]
+)
 config_kwargs = {"n_channel_in": n_channel, "contoursize_max": contoursize_max}
 config = Config(opts.config, **config_kwargs)
 if opts.plot:
@@ -270,12 +307,9 @@ class Augmenter:
 
     def add_color_jitter(self, x):
         x = x.astype(np.uint8)
-        # cv2.imshow('debug', x)
         img = Image.fromarray(x)
         img = self.color_jitter(img)
         ret_arr = np.array(img)
-        # cv2.imshow('debug_after', ret_arr)
-        # cv2.waitKey(0)
         return ret_arr
 
     def add_random_shift(self, x, y):
@@ -356,24 +390,21 @@ class Augmenter:
                 pass
             # x, side_length = self.resize_shortest_edge(x_orig)
             # y, _ = self.resize_shortest_edge(
-                # y_orig, side_length=side_length, interpolation=cv2.INTER_NEAREST
+            # y_orig, side_length=side_length, interpolation=cv2.INTER_NEAREST
             # )
             # cv2.imshow('img_after', x.astype(np.uint8))
             # cv2.imshow('mask_after', y)
-            # print('selected side length:', side_length)
             # cv2.waitKey()
-            # x, y = random_zoom(x, y)
+            x, y = random_zoom(x, y)
             # x = self.add_clahe_contrast_adj(x)
-            # x = self.add_color_jitter(x)
-            # x = self.add_blur(x)
+            x = self.add_color_jitter(x)
+            x = self.add_blur(x)
             x, y = random_fliprot(x_orig, y_orig)
             x, y = random_360rot(x, y)
             # x_prenorm = x
             x = normalize(x, 1, 99.8, axis=axis_norm)
             # cv2.imshow('before norm:', x_prenorm)
-            # print('after normalization:', x)
             # cv2.imshow('after norm:', x)
-            # print('before norm:', x_prenorm)
             # cv2.waitKey(0)
             # input()
             sig = 0.02 * np.random.uniform(0, 1)
@@ -414,7 +445,9 @@ if opts.model_path != "":
             lrs = json.load(f)
         learning_rate = list(lrs.values())[-1]
 
-median_size = calculate_extents(list(Y), np.median)
+median_size = calculate_extents(
+    [mask for sublist in masks.values() for mask in sublist], np.median
+)
 fov = np.array(model._axes_tile_overlap("YX"))
 print(f"median object size:      {median_size}")
 print(f"network field of view:   {fov}")

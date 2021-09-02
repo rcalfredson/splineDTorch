@@ -4,7 +4,7 @@ import os
 import subprocess
 import shlex
 
-# python trainByBatchLinux.py --existing_nets /media/Synology3/Robert/splineDTorch/saved_models/egg/unet_expanded_data_1_800epch/complete_nets "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4 egg"  > /dev/null 2>&1 &
+# python trainByBatchLinux.py --n_repeats 10 "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4 egg --coco_file_path /media/Synology3/Robert/amazon_annots/coco/consolidated_all.json" > /dev/null 2>&1 &
 
 
 def options():
@@ -25,6 +25,7 @@ def options():
         + " (note: enclose them in quotations)",
     )
     return p.parse_args()
+
 
 def run_one_training(existing_model=None):
     subprocess.call(

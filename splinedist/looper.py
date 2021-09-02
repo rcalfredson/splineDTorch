@@ -60,11 +60,15 @@ class Looper:
         if not self.validation:
             if self.config.train_steps_per_epoch is not None:
                 self.steps_per_epoch = self.config.train_steps_per_epoch
-                self.n_samples_per_epoch = self.config.train_steps_per_epoch * self.config.train_batch_size
+                self.n_samples_per_epoch = (
+                    self.config.train_steps_per_epoch * self.config.train_batch_size
+                )
             else:
                 self.steps_per_epoch = (
                     self.n_samples_per_epoch / self.config.train_batch_size
                 )
+            if self.steps_per_epoch < 1:
+                self.steps_per_epoch = 1
             self.data = SplineDistData2D(
                 self.X,
                 self.Y,
@@ -80,11 +84,16 @@ class Looper:
         else:
             if self.config.validation_steps_per_epoch is not None:
                 self.steps_per_epoch = self.config.validation_steps_per_epoch
-                self.n_samples_per_epoch = self.config.validation_steps_per_epoch * self.config.validation_batch_size
+                self.n_samples_per_epoch = (
+                    self.config.validation_steps_per_epoch
+                    * self.config.validation_batch_size
+                )
             else:
                 self.steps_per_epoch = (
                     self.n_samples_per_epoch / self.config.validation_batch_size
                 )
+            if self.steps_per_epoch < 1:
+                self.steps_per_epoch = 1
             self.setup_data_for_validation()
         self.running_loss = []
         self.running_mean_abs_err = []
@@ -162,19 +171,12 @@ class Looper:
             if j + 1 == self.steps_per_epoch:
                 break
             end_of_block = timeit.default_timer()
-            if 'old_end_of_block' in locals():
+            if "old_end_of_block" in locals():
                 time_diff = end_of_block - old_end_of_block
                 old_end_of_block = end_of_block
             else:
                 time_diff = end_of_block - start_t
                 old_end_of_block = start_t
-            print(f'time needed for one step: {time_diff:.3f}')
-            print('predicted:', self.predicted_values)
-            print('true vals:', self.true_values)
-            print('abs error:', self.abs_err)
-        print('predicted:', self.predicted_values)
-        print('true vals:', self.true_values)
-        print('abs error:', self.abs_err)
         self.update_errors()
         if self.plots is not None:
             self.plot()

@@ -2,6 +2,7 @@ from csbdeep.utils import _raise
 import cv2
 import elasticdeform
 import numpy as np
+import random
 from scipy.stats import truncnorm
 import sys
 
@@ -17,13 +18,19 @@ def split_by_channel(img):
 def to_int(tup):
     return tuple([int(el) for el in tup])
 
+
 # returns image rotated by the given angle (in degrees, counterclockwise)
 def rotate_image_with_crop(img, angle, use_linear=True):
     image_center = tuple(np.array(img.shape[1::-1]) / 2)
-    print('shape of the image:', img.shape)
-    print('center of the rotation:', image_center)
+    print("shape of the image:", img.shape)
+    print("center of the rotation:", image_center)
     mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
-    return cv2.warpAffine(img, mat, img.shape[:2], flags=cv2.INTER_LINEAR if use_linear else cv2.INTER_NEAREST)
+    return cv2.warpAffine(
+        img,
+        mat,
+        img.shape[:2],
+        flags=cv2.INTER_LINEAR if use_linear else cv2.INTER_NEAREST,
+    )
 
 
 def rotate_image(mat, angle, use_linear=True, crop_based_on_orig_size=False):
@@ -59,12 +66,17 @@ def rotate_image(mat, angle, use_linear=True, crop_based_on_orig_size=False):
     )
     if crop_based_on_orig_size:
         mat_center = [int(el / 2) for el in rotated_mat.shape[:2]]
-        if (mat.shape[0] > mat.shape[1] and rotated_mat.shape[1] > rotated_mat.shape[0]) or\
-            (mat.shape[1] > mat.shape[0] and rotated_mat.shape[0] > rotated_mat.shape[1]):
+        if (
+            mat.shape[0] > mat.shape[1] and rotated_mat.shape[1] > rotated_mat.shape[0]
+        ) or (
+            mat.shape[1] > mat.shape[0] and rotated_mat.shape[0] > rotated_mat.shape[1]
+        ):
             mat_center = list(reversed(mat_center))
-        rotated_mat = rotated_mat[mat_center[0] - int(image_center[1]):mat_center[0] + int(image_center[1]),
-            mat_center[1] - int(image_center[0]):mat_center[1] + int(image_center[0])]
-        if rotated_mat.shape[0] %2 == 1:
+        rotated_mat = rotated_mat[
+            mat_center[0] - int(image_center[1]) : mat_center[0] + int(image_center[1]),
+            mat_center[1] - int(image_center[0]) : mat_center[1] + int(image_center[0]),
+        ]
+        if rotated_mat.shape[0] % 2 == 1:
             rotated_mat = rotated_mat[:-1, :]
         if rotated_mat.shape[1] % 2 == 1:
             rotated_mat = rotated_mat[:, :-1]
@@ -77,39 +89,42 @@ def sample_patches(
     skip_empties=False,
     skip_partials=False,
     focused_patch_proportion=0,
-    bypass=False
+    bypass=False,
 ):
+    selected_mask = random.choice(data[0])
     if bypass:
         split_channels = split_by_channel(data[1])
         return [
-            np.expand_dims(data[0].astype(np.uint8), axis=0),
+            np.expand_dims(selected_mask.astype(np.uint8), axis=0),
             *[np.expand_dims(sc, axis=0) for sc in split_channels],
         ]
 
-    len(patch_size) == data[0].ndim or _raise(ValueError())
+    len(patch_size) == selected_mask.ndim or _raise(ValueError())
 
-    if not all((a.shape[:2] == data[0].shape[:2] for a in data)):
+    if not all((a.shape[:2] == selected_mask.shape[:2] for a in data[1:])):
         raise ValueError(
             "all input shapes must be the same: %s"
             % (" / ".join(str(a.shape) for a in data))
         )
 
-    if not all((0 < s <= d for s, d in zip(patch_size, data[0].shape))):
+    if not all((0 < s <= d for s, d in zip(patch_size, selected_mask.shape))):
         raise ValueError(
             "patch_size %s negative or larger than data shape %s along some dimensions"
-            % (str(patch_size), str(data[0].shape))
+            % (str(patch_size), str(selected_mask.shape))
         )
 
     # choose a random rotation angle
-    rot_helper = RotationHelper(data[0].shape[0], data[0].shape[1], patch_size)
+    rot_helper = RotationHelper(
+        selected_mask.shape[0], selected_mask.shape[1], patch_size
+    )
     res = None
+    data = (selected_mask, data[1])
     res = rot_helper.get_random_rot_patch(
         data,
         skip_empties=skip_empties,
         skip_partials=skip_partials,
         focused_patch_proportion=focused_patch_proportion,
     )
-
 
     return res
 
@@ -164,9 +179,9 @@ class RotationHelper:
         all_grays = get_unique_vals(arr)
         if len(all_grays) == 0:
             return self.get_random_patch()
-        # 
+        #
         # code for weighted sampling
-        #     
+        #
         nonzero_pixels = arr.astype(bool).astype(int)
         column_index = round(self.truncnorm_dist.rvs() * (arr.shape[1] / 10))
         row_index = round(self.truncnorm_dist.rvs() * (arr.shape[0] / 10))
@@ -250,11 +265,15 @@ class RotationHelper:
                 rotate=self.angle,
             )
             deformed_image = np.clip(deformed_image, a_min=0, a_max=1)
-            deformed_image = (255*deformed_image).astype(np.uint8)
+            deformed_image = (255 * deformed_image).astype(np.uint8)
             bgc = background_color(deformed_image)
             if skip_empties and not np.any(deformed_mask):
                 deformed_mask = None
-            if deformed_mask is not None and skip_partials and len(get_border_vals(deformed_mask)) > 1:
+            if (
+                deformed_mask is not None
+                and skip_partials
+                and len(get_border_vals(deformed_mask)) > 1
+            ):
                 # cv2.imshow("skipped", deformed_image.astype(np.uint8))
                 # print(
                 # "skipping a partial mask. Values were:",

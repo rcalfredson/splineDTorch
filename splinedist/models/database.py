@@ -50,10 +50,19 @@ class SplineDistDataBase(RollingSequence):
         if isinstance(X, (np.ndarray, tuple, list)) and isinstance(
             Y, (np.ndarray, tuple, list)
         ):
-            all(
-                y.ndim == nD and x.ndim == x_ndim and x.shape[:nD] == y.shape
-                for x, y in zip(X, Y)
-            ) or _raise("images and masks should have corresponding shapes/dimensions")
+            for x, y in zip(X, Y):
+                if type(y) is list:
+                    y_el_to_check = y[0]
+                else:
+                    y_el_to_check = y
+                if not (
+                    y_el_to_check.ndim == nD
+                    and x.ndim == x_ndim
+                    and x.shape[:nD] == y_el_to_check.shape
+                ):
+                    _raise(
+                        "images and masks should have corresponding shapes/dimensions"
+                    )
             # REFACTORED
         #             all(x.shape[:nD]>=patch_size for x in X) or _raise("Some images are too small for given patch_size {patch_size}".format(patch_size=patch_size))
 
@@ -291,7 +300,7 @@ class SplineDistData2D(SplineDistDataBase):
                 patch_size=self.patch_size,
                 skip_empties=self.skip_empties,
                 bypass=not self.sample_patches,
-                focused_patch_proportion=self.focused_patch_proportion
+                focused_patch_proportion=self.focused_patch_proportion,
             )
             for k in idx
         ]
