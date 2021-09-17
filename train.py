@@ -55,6 +55,8 @@ DATA_BASE_DIR = {
 }[sys_type]
 train_ts = datetime.datetime.now()
 
+# IMG_SCALING_FACTOR = 2.5
+
 lr_history = {}
 
 
@@ -109,27 +111,55 @@ def options():
         type=int,
         help="Frequency, in epochs, at which to measure validation performance.",
     )
+    parser.add_argument(
+        "--debug",
+        help="1) print additional information used for debugging trainings and 2) save"
+        " artifacts in a separate folder labeled 'debug'",
+        action="store_true",
+    )
+    parser.add_argument(
+        '--debug_vis',
+        help='show image and segmentation masks in a live viewer for debugging',
+        action='store_true'
+    )
+
     return parser.parse_args()
 
 
 opts = options()
+# create a folder for artifacts for this machine if needed
+results_for_host = f"./results_{platform.node()}"
+if opts.debug:
+    results_for_host = os.path.join(results_for_host, 'debug')
+Path(results_for_host).mkdir(exist_ok=True, parents=True)
 if not os.path.isdir(data_dir(must_exist=False)):
     Path(data_dir(must_exist=False)).mkdir(parents=True, exist_ok=True)
 X = sorted(glob(os.path.join(DATA_BASE_DIR, opts.data_path, "images/*.tif")))
 img_filepaths = X
 masks = {k: [] for k in X}
+# X = [cv2.resize(img, (0, 0), fx=IMG_SCALING_FACTOR, fy=IMG_SCALING_FACTOR) for img in list(map(imread, X))]
 X = list(map(imread, X))
 
 
 def create_masks(filepath, coco_data, img_id, orig_img, num_masks=6):
     img_data = coco_data.imgs[img_id]
     for _ in range(num_masks):
-        maskImg = Image.new("L", (img_data["width"], img_data["height"]), 0)
+        maskImg = Image.new(
+            "L",
+            (
+                # IMG_SCALING_FACTOR * img_data["width"],
+                # IMG_SCALING_FACTOR * img_data["height"],
+                img_data["width"],
+                img_data["height"],
+            ),
+            0,
+        )
         annotations = coco_data.getAnnIds(imgIds=[img_id])
         random.shuffle(annotations)
         for i, ann in enumerate(annotations):
             ann = coco_data.anns[ann]
             ImageDraw.Draw(maskImg).polygon(
+                # [int(IMG_SCALING_FACTOR * el) for el in ann["segmentation"][0]],
                 [int(el) for el in ann["segmentation"][0]],
                 outline=i + 1,
                 fill=i + 1,
@@ -137,7 +167,10 @@ def create_masks(filepath, coco_data, img_id, orig_img, num_masks=6):
             if len(ann["segmentation"]) > 1:
                 for seg in ann["segmentation"][1:]:
                     ImageDraw.Draw(maskImg).polygon(
-                        [int(el) for el in seg], outline=0, fill=0
+                        # [int(IMG_SCALING_FACTOR * el) for el in seg], outline=0, fill=0
+                        [int(el) for el in seg],
+                        outline=0,
+                        fill=0,
                     )
         maskImg = np.array(maskImg)
         masks[filepath].append(maskImg)
@@ -164,6 +197,9 @@ else:
             DATA_BASE_DIR, opts.data_path, "masks", img_basename
         )
         assert os.path.exists(mask_filepath)
+        # masks[filepath].append(cv2.resize(imread(mask_filepath), (0, 0),
+        #     fx=IMG_SCALING_FACTOR, fy=IMG_SCALING_FACTOR,
+        #     interpolation=cv2.INTER_NEAREST))
         masks[filepath].append(imread(mask_filepath))
 n_channel = 1 if X[0].ndim == 2 else X[0].shape[-1]
 axis_norm = (0, 1)  # normalize channels independently
@@ -189,6 +225,8 @@ ind_train, ind_val = ind[:-n_val], ind[-n_val:]
 
 X_val, Y_val = [X[i] for i in ind_val], [masks[img_filepaths[i]] for i in ind_val]
 X_trn, Y_trn = [X[i] for i in ind_train], [masks[img_filepaths[i]] for i in ind_train]
+filenames_trn = [img_filepaths[i] for i in ind_train]
+filenames_val = [img_filepaths[i] for i in ind_val]
 print("number of images: %3d" % len(X))
 print("- training:       %3d" % len(X_trn))
 print("- validation:     %3d" % len(X_val))
@@ -232,7 +270,7 @@ def write_existing_model_data():
         f"_{platform.node()}_{train_ts}.json".replace(":", "-")
     )
     metadata = {"starter_model": opts.model_path}
-    with open(filename, "w") as f:
+    with open(os.path.join(results_for_host, filename), "w") as f:
         json.dump(metadata, f)
 
 
@@ -244,7 +282,7 @@ def write_lr_history(config: Config):
             f"splinedist_{config.backbone.name}_lr_history"
             f"_{platform.node()}_{train_ts}.json".replace(":", "-"),
         )
-    with open(config.lr_history_filename, "w") as my_f:
+    with open(os.path.join(results_for_host, config.lr_history_filename), "w") as my_f:
         json.dump(lr_history, my_f, ensure_ascii=False, indent=4)
 
 
@@ -261,10 +299,14 @@ def random_fliprot(img: torch.Tensor, mask: torch.Tensor):
     return img, mask
 
 
-def random_360rot(img: torch.Tensor, mask: torch.Tensor):
+def random_360rot(img: torch.Tensor, mask: torch.Tensor, background_color=0):
     rotation_angle = np.random.randint(0, 360)
     img = rotate_image(
-        img, rotation_angle, use_linear=True, crop_based_on_orig_size=True
+        img,
+        rotation_angle,
+        use_linear=True,
+        crop_based_on_orig_size=True,
+        background_color=background_color,
     )[0]
     mask = rotate_image(
         mask, rotation_angle, use_linear=False, crop_based_on_orig_size=True
@@ -395,37 +437,71 @@ class Augmenter:
             # cv2.imshow('img_after', x.astype(np.uint8))
             # cv2.imshow('mask_after', y)
             # cv2.waitKey()
-            x, y = random_zoom(x, y)
+            # x, y = random_zoom(x, y)
             # x = self.add_clahe_contrast_adj(x)
-            x = self.add_color_jitter(x)
-            x = self.add_blur(x)
-            x, y = random_fliprot(x_orig, y_orig)
+            # x = self.add_color_jitter(x)
+            # x = self.add_blur(x)
+            x, y = random_fliprot(x, y)
+            # x_alt, y_alt = random_360rot(x, y, current_bg_color)
+
+            # x_alt = fill_in_blanks(x_alt, current_bg_color)
+            # cv2.imshow("immediately before rotation", x)
+            # cv2.imshow("immediately after rotation", x_alt)
+            # print('current bg color:', current_bg_color)
+            # cv2.waitKey(0)
             x, y = random_360rot(x, y)
             # x_prenorm = x
             x = normalize(x, 1, 99.8, axis=axis_norm)
+            # x_alt = normalize(x_alt, 1, 99.8, axis=axis_norm)
+            # cv2.imshow("normal img post-normalization", x)
+            # cv2.imshow("rotated img post-normalization", x_alt)
+            # cv2.waitKey(0)
             # cv2.imshow('before norm:', x_prenorm)
             # cv2.imshow('after norm:', x)
             # cv2.waitKey(0)
             # input()
             sig = 0.02 * np.random.uniform(0, 1)
             x = x + sig * np.random.normal(0, 1, x.shape)
+            # x_alt = x_alt + sig * np.random.normal(0, 1, x.shape)
+
             # x = np.clip(x, a_min=0, a_max=1)
             if config.skip_partials:
                 border_vals = get_border_vals(y)
                 if len(border_vals) > 1:
                     no_cutoff = False
+                    x = x_orig
+                    y = y_orig
                 else:
                     no_cutoff = True
             else:
                 no_cutoff = True
             num_attempts += 1
-        # cv2.imshow('augmented image', x)
-        # cv2.imshow('ground truth masks', y)
-        # print('augmented image:', x)
-        # print('ground truth masks:', y)
-        # with np.printoptions(threshold=sys.maxsize), open("debug1", "w") as f:
-        #     print("ground truth:", y, file=f)
+        if no_cutoff == False:
+            x = normalize(x, 1, 99.8, axis=axis_norm)
+        # final step before displaying the images:
+        # scale down the mask.
+        # cv2.imshow('mask before downscaling', y)
+        # x = cv2.resize(
+        #     x, (0, 0), fx=(1 / IMG_SCALING_FACTOR), fy=(1 / IMG_SCALING_FACTOR)
+        # )
+        # y = cv2.resize(
+        #     y, (0, 0), fx=(1 / IMG_SCALING_FACTOR), fy=(1 / IMG_SCALING_FACTOR)
+        # )
+        # cv2.imshow('mask after rescaling', y)
+        # y = cv2.medianBlur(y, 13)
+        # cv2.imshow('mask after applying filter', y)
         # cv2.waitKey(0)
+        if opts.debug_vis:
+            cv2.imshow("augmented image", x)
+            # colormapped_y = cv2.applyColorMap(y, cv2.COLORMAP_JET)
+            cv2.imshow("ground truth masks", 5 * y)
+            # cv2.imshow("image with extra rotation", x_alt)
+            # cv2.imshow("masks with extra rotation", y_alt)
+            # print('augmented image:', x)
+            # print('ground truth masks:', y)
+            # with np.printoptions(threshold=sys.maxsize), open("debug1", "w") as f:
+            #     print("ground truth:", y, file=f)
+            cv2.waitKey(0)
         return x, y
 
 
@@ -472,6 +548,7 @@ train_looper = Looper(
     augmenter.augment,
     X_trn,
     Y_trn,
+    filenames_trn,
     validation=False,
     plots=plots[0],
     left_col_plots=opts.left_col_plots,
@@ -485,6 +562,7 @@ valid_looper = Looper(
     augmenter.augment,
     X_val,
     Y_val,
+    filenames_val,
     validation=True,
     plots=plots[1],
     left_col_plots=opts.left_col_plots,
@@ -511,20 +589,29 @@ for i, epoch in enumerate(range(config.train_epochs)):
         if new_best:
             current_best = val_loss
             for f in glob(
-                f"splinedist_{config.backbone.name}_{train_ts}_best_"
-                f"*_{platform.node()}.pth".replace(":", "-")
+                os.path.join(
+                    results_for_host,
+                    f"splinedist_{config.backbone.name}_{train_ts}_best_"
+                    f"*_{platform.node()}.pth".replace(":", "-"),
+                )
             ):
                 os.unlink(f)
             torch.save(
                 model.state_dict(),
-                f"splinedist_{config.backbone.name}_{train_ts}_best_epoch{i+1}"
-                f"_{platform.node()}.pth".replace(":", "-"),
+                os.path.join(
+                    results_for_host,
+                    f"splinedist_{config.backbone.name}_{train_ts}_best_epoch{i+1}"
+                    f"_{platform.node()}.pth".replace(":", "-"),
+                ),
             )
             print(f"\nNew best result: {val_loss}")
         if not opts.export_at_end and reachedSaveInterval:
             torch.save(
                 model.state_dict(),
-                f"splinedist_{config.backbone.name}_iter{i}.pth",
+                os.path.join(
+                    results_for_host,
+                    f"splinedist_{config.backbone.name}_iter{i}.pth",
+                ),
             )
             print("Saving a regular interval export")
 
@@ -533,12 +620,18 @@ for i, epoch in enumerate(range(config.train_epochs)):
 if opts.export_at_end:
     torch.save(
         model.state_dict(),
-        f"splinedist_{config.backbone.name}_{config.train_epochs}epochs_"
-        + f"{platform.node()}_{train_ts}.pth".replace(":", "-"),
+        os.path.join(
+            results_for_host,
+            f"splinedist_{config.backbone.name}_{config.train_epochs}epochs_"
+            + f"{platform.node()}_{train_ts}.pth".replace(":", "-"),
+        ),
     )
     plt.savefig(
-        f"splinedist_{config.backbone.name}_{config.train_epochs}epochs_"
-        + f"{platform.node()}_{train_ts}.png".replace(":", "-")
+        os.path.join(
+            results_for_host,
+            f"splinedist_{config.backbone.name}_{config.train_epochs}epochs_"
+            + f"{platform.node()}_{train_ts}.png".replace(":", "-"),
+        )
     )
 
 shutil.rmtree(data_dir())

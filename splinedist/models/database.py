@@ -14,7 +14,6 @@ import sys
 import matplotlib.pyplot as plt
 import cProfile
 
-
 class SplineDistDataBase(RollingSequence):
     def __init__(
         self,
@@ -238,6 +237,7 @@ class SplineDistData2D(SplineDistDataBase):
         self,
         X,
         Y,
+        filenames,
         batch_size,
         n_params,
         length,
@@ -283,6 +283,7 @@ class SplineDistData2D(SplineDistDataBase):
         self.contoursize_max = contoursize_max
         self.n_samples = n_samples
         self.skip_dist_prob_calc = skip_dist_prob_calc
+        self.filenames = filenames
 
     def __getitem__(self, i):
         # start_t = timeit.default_timer()
@@ -304,6 +305,7 @@ class SplineDistData2D(SplineDistDataBase):
             )
             for k in idx
         ]
+        selected_filenames = [self.filenames[k] for k in idx]
         # np.set_printoptions(threshold=sys.maxsize)
         # with open('debug_mask.txt', 'w') as f:
         #     print('deformed mask:', self.arrays[0][0], file=f)
@@ -389,5 +391,5 @@ class SplineDistData2D(SplineDistDataBase):
             # )
             # print(f"total time: {end_time - start_t:.3f}")
             # input()
-            return [X], [prob, dist], num_instances
+            return [X], [prob, dist], num_instances, selected_filenames
         return X, Y

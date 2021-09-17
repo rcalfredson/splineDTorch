@@ -1,0 +1,12 @@
+--config configs/hyperparam_search/exp_1.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_2.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_3.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_4.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_5.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_6.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_7.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_8.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_9.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_10.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_11.json --plot --val_interval 2 arena_pit/scaled_25%
+--config configs/hyperparam_search/exp_12.json --plot --val_interval 2 arena_pit/scaled_25%

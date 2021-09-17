@@ -20,6 +20,7 @@ class Looper:
         augmenter,
         X,
         Y,
+        img_filenames,
         validation: bool,
         plots: Optional[matplotlib.axes.Axes] = None,
         left_col_plots: str = None,
@@ -30,6 +31,7 @@ class Looper:
         self.loss = loss
         self.optimizer = optimizer
         self.augmenter = augmenter
+        self.img_filenames = img_filenames
         self.X, self.Y = X, Y
         self.dataset_size = len(X)
         self.validation = validation
@@ -72,6 +74,7 @@ class Looper:
             self.data = SplineDistData2D(
                 self.X,
                 self.Y,
+                self.img_filenames,
                 self.config.train_batch_size,
                 length=self.steps_per_epoch,
                 n_samples=self.n_samples_per_img,
@@ -102,6 +105,7 @@ class Looper:
         _data_val = SplineDistData2D(
             self.X,
             self.Y,
+            self.img_filenames,
             batch_size=1,
             length=self.n_samples_per_epoch,
             n_samples=self.n_samples_per_img,
@@ -185,7 +189,9 @@ class Looper:
 
     def update_errors(self):
         self.mean_err = sum(self.err) / self.n_samples_per_epoch
-        self.mean_abs_err = sum(self.abs_err) / self.n_samples_per_epoch
+        print('number steps per epoch:', len(self.abs_err))
+        print('avg. value of the abs err entries:', np.mean(self.abs_err))
+        self.mean_abs_err = np.mean(self.abs_err)
         self.running_mean_abs_err.append(self.mean_abs_err)
         self.std = np.array(self.err).std()
 
@@ -205,7 +211,7 @@ class Looper:
         elif self.left_col_plots == "mae":
             self.plots[0].set_xlabel("Epoch")
             self.plots[0].set_ylabel("Mean absolute error")
-            self.plots[0].set_ylim((0, 1))
+            self.plots[0].set_ylim((0, 2.))
             self.plots[0].plot(epochs, self.running_mean_abs_err)
 
         # loss
@@ -213,7 +219,7 @@ class Looper:
         self.plots[1].set_title("Train" if not self.validation else "Valid")
         self.plots[1].set_xlabel("Epoch")
         self.plots[1].set_ylabel("Loss")
-        self.plots[1].set_ylim((0, 1.5))
+        self.plots[1].set_ylim((0, 2.))
         self.plots[1].plot(epochs, self.running_loss)
 
         matplotlib.pyplot.pause(0.01)

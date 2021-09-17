@@ -21,7 +21,10 @@
     "train_epochs": 400,
     "train_foreground_only": 0.9,
     "train_learning_rate": 0.0003,
-    "train_loss_weights": [1, 0.2],
+    "train_loss_weights": [
+        1,
+        0.2
+    ],
     "train_patch_size": [
         160,
         160

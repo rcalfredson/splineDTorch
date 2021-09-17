@@ -10,6 +10,7 @@ import json
 import matplotlib
 
 import math
+
 matplotlib.use("agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,7 +23,7 @@ from shapely.geometry import Polygon, Point
 from splinedist.config import Config
 from splinedist.models.model2d import SplineDist2D
 from splinedist.plot.plot import _draw_polygons
-from splinedist.utils import data_dir
+from splinedist.utils import data_dir, get_interpolated_points
 import spline_generator as sg
 import sys
 
@@ -104,6 +105,18 @@ p.add_argument(
     action="store_true",
     help="if exporting egg JSON, save results for progressively"
     + " greater levels of cropping.",
+)
+p.add_argument(
+    "--img_rescale_factor",
+    type=float,
+    default=1.0,
+    help="factor by which to scale the images before inputting them to the model",
+)
+p.add_argument(
+    '--vis_rescale_factor',
+    type=float,
+    default=1.0,
+    help='factor by which to rescale the rendered images when using visualization'
 )
 opts = p.parse_args()
 
@@ -213,7 +226,7 @@ def get_smoothed_egg_outline_img():
                                     int(
                                         el
                                         * (
-                                            display_resize_factor
+                                            opts.vis_rescale_factor
                                             / predict_resize_factor
                                         )
                                     )
@@ -238,6 +251,7 @@ if opts.no_dots:
     X_names = []
     for single_path in opts.dataPath.split(","):
         X_names.extend(sorted(glob("%s/*.jpg" % single_path)))
+        X_names.extend(sorted(glob("%s/*.JPG" % single_path)))
 elif opts.coco:
     coco_data = COCO(opts.coco)
     img_ids = list(coco_data.imgs.keys())
@@ -314,21 +328,6 @@ def apply_brightness_contrast(input_img, brightness=0, contrast=0):
     return buf
 
 
-def get_interpolated_points(data, n_points=30):
-    M = np.shape(data)[2]
-
-    SplineContour = sg.SplineCurveVectorized(
-        M, sg.B3(), True, np.transpose(data, [0, 2, 1]), useTorch=False
-    )
-    more_coords = SplineContour.sampleSequential(phi)
-    # choose 30 points evenly divided by the range.
-    sampling_interval = more_coords.shape[1] // n_points
-    sampled_points = more_coords[:, slice(0, more_coords.shape[1], sampling_interval)]
-    sampled_points = np.add(sampled_points, 1)
-    sampled_points = sampled_points.astype(float).tolist()
-    return sampled_points
-
-
 def export_egg_json(img_basename, details, model_path, crop_level):
     if opts.dest_dir:
         out_folder = error_dir
@@ -342,6 +341,9 @@ def export_egg_json(img_basename, details, model_path, crop_level):
     )
     egg_outlines = []
     sampled_points = get_interpolated_points(details["coord"])
+    for i, instance in enumerate(sampled_points):
+        for j, pt in enumerate(instance):
+            sampled_points[i][j] = [el / 0.186 for el in pt]
     with open(outfile, "w") as f:
         json.dump(sampled_points, f, indent=4, ensure_ascii=False)
 
@@ -391,15 +393,16 @@ for model_path in models:
     for i, img in enumerate(X):
         predict_start = timeit.default_timer()
         img_basename = os.path.basename(X_names[i])
+        if img_basename != "10_4_2020_img_0002_5_1_B63XK.jpg":
+            continue
         img_orig = img
-        for predict_resize_factor in np.linspace(0.13, 0.20, 6):
-            display_resize_factor = 0.25
+        for predict_resize_factor in (opts.img_rescale_factor,):  # np.linspace(0.20, 0.26, 7):
             img = cv2.resize(
                 img_orig, (0, 0), fx=predict_resize_factor, fy=predict_resize_factor
             )
             img_copy = np.array(img)
             img_display = cv2.resize(
-                img_orig, (0, 0), fx=display_resize_factor, fy=display_resize_factor
+                img_orig, (0, 0), fx=opts.vis_rescale_factor, fy=opts.vis_rescale_factor
             )
             # cv2.imshow("img", cv2.resize(img, (0, 0), fx=0.5, fy=0.5))
             for clip_level in (16,):
@@ -433,10 +436,10 @@ for model_path in models:
                 # input()w') as f:
             #     print('writing')
             #     print('image:', final[
-                #     f"final (clip level {clip_level})",
-                #     cv2.resize(final, (0, 0), fx=0.5, fy=0.5),
-                # )
-                # cv2.waitKey(0)
+            #     f"final (clip level {clip_level})",
+            #     cv2.resize(final, (0, 0), fx=0.5, fy=0.5),
+            # )
+            # cv2.waitKey(0)
             # np.set_printoptions(threshold=sys.maxsize)
             # with open('debug1', 'w') as f:
             #     print('writing')
@@ -455,8 +458,10 @@ for model_path in models:
             img = img.astype(np.float32)
             labels, details = model.predict_instances(img)
             num_predicted = len(details["points"])
-            print("img %i of %i" % (i+1, tot_num_examples))
+            print("img %i of %i" % (i + 1, tot_num_examples))
             print("num predicted:", num_predicted)
+            path_components = os.path.normpath(X_names[i]).split(os.sep)
+            folder_with_imgname = f"{path_components[-2]}_{path_components[-1]}"
             if not opts.skip_err:
                 chamber_type_path = os.path.join(
                     Path(X_names[i]).parent, "chamber_types.json"
@@ -475,22 +480,32 @@ for model_path in models:
                 else:
                     num_labeled = np.sum(Y[i])
                 print("num labeled:", num_labeled)
-                path_components = os.path.normpath(X_names[i]).split(os.sep)
                 abs_err = abs(num_labeled - num_predicted)
-                errors_by_img[f"{path_components[-2]}_{path_components[-1]}"] = abs_err
+                errors_by_img[folder_with_imgname] = abs_err
                 true_values.append(num_labeled)
             predicted_values.append(num_predicted)
             if opts.export_egg_json:
                 for crop_level in crop_levels:
                     crop_slice = slice(0, -crop_level if crop_level else None)
-                    img = img_orig[crop_slice, crop_slice]
+                    img = cv2.resize(
+                        img_orig,
+                        (0, 0),
+                        fx=predict_resize_factor,
+                        fy=predict_resize_factor,
+                    )[crop_slice, crop_slice]
                     img = normalize(img, 1, 99.8, axis=axis_norm)
                     labels, details = model.predict_instances(img)
-                    export_egg_json(img_basename, details, model_path, crop_level)
+                    export_egg_json(
+                        folder_with_imgname, details, model_path, crop_level
+                    )
 
             if opts.vis:
                 img_show = cv2.cvtColor(np.array(img_display), cv2.COLOR_RGB2BGR)
-                coord, points, prob = details["coord"], details["points"], details["prob"]
+                coord, points, prob = (
+                    details["coord"],
+                    details["points"],
+                    details["prob"],
+                )
                 for egg_contour in coord:
                     annot = get_interpolated_points(
                         np.expand_dims(
@@ -502,7 +517,7 @@ for model_path in models:
                                                 int(
                                                     el
                                                     * (
-                                                        display_resize_factor
+                                                        opts.vis_rescale_factor
                                                         / predict_resize_factor
                                                     )
                                                 )
@@ -524,7 +539,9 @@ for model_path in models:
                 #     ),
                 #     img_show,
                 # )
-                cv2.imshow(f'{X_names[i]} (zoom level {predict_resize_factor})', img_show)
+                cv2.imshow(
+                    f"{X_names[i]} (zoom level {predict_resize_factor})", img_show
+                )
                 cv2.waitKey(0)
                 cv2.destroyAllWindows()
             if opts.check_dot_locations:
@@ -547,14 +564,22 @@ for model_path in models:
                 predictions_without_dots = []
                 for i in range(len(control_pt_coords)):
                     if i not in predictions_to_dots:
-                        predictions_without_dots.append(tuple(reversed(details['points'][i])))
+                        predictions_without_dots.append(
+                            tuple(reversed(details["points"][i]))
+                        )
                 # draw these dots on a copy of the original image.
                 img_out = np.array(img_orig)
                 for unplaced_dot in unplaced_dots:
-                    cv2.circle(img_out, unplaced_dot, radius=1, color=COL_R, thickness=-1)
+                    cv2.circle(
+                        img_out, unplaced_dot, radius=1, color=COL_R, thickness=-1
+                    )
                 for unmatched_pred in predictions_without_dots:
-                    cv2.drawMarker(img_out, unmatched_pred, COL_R, markerType=cv2.MARKER_TILTED_CROSS,
-                        )
+                    cv2.drawMarker(
+                        img_out,
+                        unmatched_pred,
+                        COL_R,
+                        markerType=cv2.MARKER_TILTED_CROSS,
+                    )
                 for outline_idx in predictions_to_dots:
                     if len(predictions_to_dots[outline_idx]) > 1:
                         color = COL_O
@@ -569,16 +594,31 @@ for model_path in models:
                             thickness=-1,
                         )
                 outline_img = get_smoothed_egg_outline_img()
-                if img_out.shape[0] > img_out.shape[1]: # image is tall, so place them horizontally together
-                    combined_img = np.zeros((img_out.shape[0], 2*img_out.shape[1] + 20, 3), dtype=np.uint8)
-                    combined_img[:, :img_out.shape[1]] = img_out
-                    combined_img[:, img_out.shape[1] + 20:] = outline_img
-                else: # image is wide, so place them vertically together
-                    combined_img = np.zeros((2*img_out.shape[0] + 20, img_out.shape[1], 3), dtype=np.uint8)
-                    combined_img[:img_out.shape[0], :] = img_out
-                    combined_img[img_out.shape[0] + 20:, :] = outline_img
-                print('saving the image to this location:', os.path.join(error_dir, f"{img_basename}_dot_compare.png"))
-                cv2.imwrite(os.path.join(error_dir, f"{len(coords_of_pts)}eggs_{img_basename}_dot_compare.png"), combined_img)
+                if (
+                    img_out.shape[0] > img_out.shape[1]
+                ):  # image is tall, so place them horizontally together
+                    combined_img = np.zeros(
+                        (img_out.shape[0], 2 * img_out.shape[1] + 20, 3), dtype=np.uint8
+                    )
+                    combined_img[:, : img_out.shape[1]] = img_out
+                    combined_img[:, img_out.shape[1] + 20 :] = outline_img
+                else:  # image is wide, so place them vertically together
+                    combined_img = np.zeros(
+                        (2 * img_out.shape[0] + 20, img_out.shape[1], 3), dtype=np.uint8
+                    )
+                    combined_img[: img_out.shape[0], :] = img_out
+                    combined_img[img_out.shape[0] + 20 :, :] = outline_img
+                print(
+                    "saving the image to this location:",
+                    os.path.join(error_dir, f"{img_basename}_dot_compare.png"),
+                )
+                cv2.imwrite(
+                    os.path.join(
+                        error_dir,
+                        f"{len(coords_of_pts)}eggs_{img_basename}_dot_compare.png",
+                    ),
+                    combined_img,
+                )
             if opts.vis:
                 img_show = get_smoothed_egg_outline_img()
                 cv2.imwrite(
@@ -617,7 +657,11 @@ for model_path in models:
                 gt_pts = np.where(Y[i] > 0)
                 # fig = plt.figure()
                 # img_show = img if img.ndim == 2 else img[..., 0]
-                coord, points, prob = details["coord"], details["points"], details["prob"]
+                coord, points, prob = (
+                    details["coord"],
+                    details["points"],
+                    details["prob"],
+                )
                 # plt.imshow(img_show, cmap="gray")
                 # _draw_polygons(coord, points, prob, show_dist=True)
                 for fname in (
@@ -646,7 +690,8 @@ for model_path in models:
                         annot = annot["segmentation"][0]
                         annot = list(zip(annot[::2], annot[1::2]))
                         annot = [
-                            tuple([int(el * resize_factor) for el in tup]) for tup in annot
+                            tuple([int(el * resize_factor) for el in tup])
+                            for tup in annot
                         ]
                         gt_annots.append(annot)
                         annot_as_array = np.array(annot)

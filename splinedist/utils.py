@@ -16,6 +16,18 @@ import warnings
 has_cv2_v4 = cv2.__version__.startswith("4")
 onload_ts = datetime.now()
 
+def data_dir(must_exist=True):
+    prospective_dir = os.path.join(
+        "data_by_host", f"{platform.node()}_{onload_ts}".replace(":", "-")
+    )
+    if (must_exist and os.path.isdir(prospective_dir)) or not must_exist:
+        return prospective_dir
+    elif must_exist and not os.path.isdir(prospective_dir):
+        return "./"
+
+phi = np.load(os.path.join(data_dir(), "phi_" + str(8) + ".npy"))
+
+
 
 def _is_power_of_2(i):
     assert i > 0
@@ -110,16 +122,6 @@ def wrapIndex(t, k, M, half_support):
         if t_left <= k - M <= t_right:
             wrappedT = t - (k - M)
     return wrappedT
-
-
-def data_dir(must_exist=True):
-    prospective_dir = os.path.join(
-        "data_by_host", f"{platform.node()}_{onload_ts}".replace(":", "-")
-    )
-    if (must_exist and os.path.isdir(prospective_dir)) or not must_exist:
-        return prospective_dir
-    elif must_exist and not os.path.isdir(prospective_dir):
-        return "./"
 
 
 def phi_generator(M, contoursize_max, debug=False):
@@ -258,6 +260,20 @@ def fill_label_holes(lbl_img, **kwargs):
         mask_filled = binary_fill_holes(grown_mask, **kwargs)[shrink_slice]
         lbl_img_filled[sl][mask_filled] = i
     return lbl_img_filled
+
+def get_interpolated_points(data, n_points=30):
+    M = np.shape(data)[2]
+
+    SplineContour = sg.SplineCurveVectorized(
+        M, sg.B3(), True, np.transpose(data, [0, 2, 1]), useTorch=False
+    )
+    more_coords = SplineContour.sampleSequential(phi)
+    # choose 30 points evenly divided by the range.
+    sampling_interval = more_coords.shape[1] // n_points
+    sampled_points = more_coords[:, slice(0, more_coords.shape[1], sampling_interval)]
+    sampled_points = np.add(sampled_points, 1)
+    sampled_points = sampled_points.astype(float).tolist()
+    return sampled_points
 
 
 def get_contoursize_max(Y_trn):

@@ -33,7 +33,9 @@ def rotate_image_with_crop(img, angle, use_linear=True):
     )
 
 
-def rotate_image(mat, angle, use_linear=True, crop_based_on_orig_size=False):
+def rotate_image(
+    mat, angle, use_linear=True, crop_based_on_orig_size=False, background_color=0
+):
     """
     Rotates an image (angle in degrees) and expands image to avoid cropping
     """
@@ -63,6 +65,7 @@ def rotate_image(mat, angle, use_linear=True, crop_based_on_orig_size=False):
         rotation_mat,
         (bound_w, bound_h),
         flags=cv2.INTER_LINEAR if use_linear else cv2.INTER_NEAREST,
+        borderValue=background_color,
     )
     if crop_based_on_orig_size:
         mat_center = [int(el / 2) for el in rotated_mat.shape[:2]]
@@ -157,6 +160,7 @@ class RotationHelper:
 
     def get_rotation_angle(self):
         self.angle = np.random.randint(0, 360)
+        # self.angle = 0
         return
         while True:
             self.angle = np.random.randint(0, 360)
