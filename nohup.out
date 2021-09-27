@@ -1,0 +1,4 @@
+usage: trainByBatchLinux.py [-h]
+                            [--n_repeats N_REPEATS | --existing_nets EXISTING_NETS]
+                            [--train_params TRAIN_PARAMS | --train_params_list TRAIN_PARAMS_LIST]
+trainByBatchLinux.py: error: unrecognized arguments: /dev/null

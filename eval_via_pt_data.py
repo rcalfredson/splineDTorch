@@ -32,6 +32,7 @@ import timeit
 import torch
 from util import COL_W, COL_R, COL_B, COL_G, COL_B_L, COL_O
 from chamber import CT
+from circleFinder import CircleFinder
 
 # python eval_via_pt_data.py  ../objects_counting_dmap/egg_source/combined_robert_uli_temp '/media/Synology3/Robert/splineDTorch/saved_models/egg/unet_expanded_data_1_1200epch/complete_nets/*.pth'
 
@@ -49,6 +50,18 @@ p.add_argument(
     "--coco",
     help="path to COCO file of segmentation data for eval images."
     " Note: every image in this file must be inside the dataPath folder.",
+)
+# p.add_argument(
+#     "--detailed",
+#     help="include additional performance metrics (recall, number false positives,"
+#     " etc). --coco option must be included to use this feature.",
+#     action="store_true",
+# )
+p.add_argument(
+    "--chamber_types",
+    help="path to JSON file specifying the chamber type of each image being analyzed,"
+    " to use as a check specifically for arena well detectors. --coco option must be"
+    " included to use this feature.",
 )
 p.add_argument(
     "--config",
@@ -113,13 +126,20 @@ p.add_argument(
     help="factor by which to scale the images before inputting them to the model",
 )
 p.add_argument(
-    '--vis_rescale_factor',
+    "--vis_rescale_factor",
     type=float,
     default=1.0,
-    help='factor by which to rescale the rendered images when using visualization'
+    help="factor by which to rescale the rendered images when using visualization",
 )
 opts = p.parse_args()
 
+# if opts.detailed is True and opts.coco is None:
+#     exit("To perform detailed analysis, specify path to COCO file using --coco option.")
+if opts.chamber_types is not None and opts.coco is None:
+    exit(
+        "To measure accuracy of chamber type predictions, specify path"
+        " to COCO file using --coco option."
+    )
 
 axis_norm = (0, 1)
 
@@ -127,7 +147,8 @@ axis_norm = (0, 1)
 def draw_line(img, point_lists, color=None):
     line_width = 1
     if color == None:
-        color = [int(256 * i) for i in reversed(get_rand_color())]
+        # color = [int(256 * i) for i in reversed(get_rand_color())]
+        color = (255, 255, 255)
     for line in point_lists:
         pts = np.array(line, dtype=np.int32)
         cv2.polylines(
@@ -149,9 +170,10 @@ def draw_polygons_based_on_overlap(
     debug=True,
     draw_iou_failures=True,
 ):
-    iou_threshold = 0.50
+    iou_threshold = 0.2
     if debug:
         print("how many polygons to compare against?", len(polygons_to_compare))
+    num_true_pos = 0
     for i, polygon in enumerate(polygons):
         if debug:
             print("checking this polygon", polygon)
@@ -190,6 +212,8 @@ def draw_polygons_based_on_overlap(
             print("centroid match?", centroid_match)
             print("iou match?", iou_match)
             print("already added?", already_added)
+        if iou_match:
+            num_true_pos += 1
         if not centroid_match or (
             draw_iou_failures and centroid_match and not iou_match
         ):
@@ -203,6 +227,12 @@ def draw_polygons_based_on_overlap(
                 cv2.imshow("before", before_img)
                 cv2.imshow("after", img)
                 cv2.waitKey(0)
+    if len(polygons) == 0:
+        recall = np.nan
+    else:
+        recall = num_true_pos / len(polygons)
+    num_false_pos = len(polygons_to_compare) - num_true_pos
+    return recall, num_false_pos
 
 
 def get_rand_color(pastel_factor=0.8):
@@ -263,9 +293,23 @@ elif opts.coco:
 else:
     Y_names = sorted(glob("%s/*_dots.png" % opts.dataPath))
     X_names = [el.replace("_dots.png", ".jpg") for el in Y_names]
+for i, x_name in enumerate(list(X_names)):
+    if not os.path.exists(x_name):
+        x_name_split = os.path.splitext(x_name)
+        name_alt_ext = f"{x_name_split[0]}{x_name_split[1].upper()}"
+        X_names.remove(x_name)
+        if os.path.exists(name_alt_ext):
+            X_names.insert(i, name_alt_ext)
 X = list([np.array(img) for img in map(Image.open, X_names)])
 if not opts.skip_err:
     if opts.coco:
+        recall_by_img, false_pos_counts_by_img = [], []
+        num_perfect_predictions = 0
+        if opts.chamber_types:
+            with open(opts.chamber_types) as f:
+                chamber_type_map = json.load(f)
+            chamber_type_accuracy_by_img = []
+            num_imperfect_predictions = 0
         Y = []
         for i, img_id in enumerate(coco_data.imgs):
             loaded_img = cv2.imread(X_names[i])
@@ -356,6 +400,7 @@ def create_and_save_img(img_gen_func):
     current_figsize = fig.get_size_inches()
     fig.set_size_inches(current_figsize[0] * 2, current_figsize[1] * 2)
     plt.savefig("debug/temp.png", bbox_inches="tight", pad_inches=0, dpi=100)
+    plt.close('all')
 
 
 saved_error_examples = {}
@@ -391,12 +436,13 @@ for model_path in models:
     else:
         model.load_state_dict(loaded_model)
     for i, img in enumerate(X):
+        input('starting iteration for a new image')
         predict_start = timeit.default_timer()
         img_basename = os.path.basename(X_names[i])
-        if img_basename != "10_4_2020_img_0002_5_1_B63XK.jpg":
-            continue
         img_orig = img
-        for predict_resize_factor in (opts.img_rescale_factor,):  # np.linspace(0.20, 0.26, 7):
+        for predict_resize_factor in (
+            opts.img_rescale_factor,
+        ):  # np.linspace(0.20, 0.26, 7):
             img = cv2.resize(
                 img_orig, (0, 0), fx=predict_resize_factor, fy=predict_resize_factor
             )
@@ -532,18 +578,18 @@ for model_path in models:
                         )
                     )[0]
                     draw_line(img_show, [annot])
-                # cv2.imwrite(
-                #     os.path.join(
-                #         "debug",
-                #         f"errors_{path_components[-2]}_{path_components[-1]}_{os.path.basename(model_path)}.png",
-                #     ),
-                #     img_show,
-                # )
-                cv2.imshow(
-                    f"{X_names[i]} (zoom level {predict_resize_factor})", img_show
+                cv2.imwrite(
+                    os.path.join(
+                        "debug",
+                        f"errors_{path_components[-2]}_{path_components[-1]}_{os.path.basename(model_path)}.png",
+                    ),
+                    img_show,
                 )
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
+                # cv2.imshow(
+                #     f"{X_names[i]} (zoom level {predict_resize_factor})", img_show
+                # )
+                # cv2.waitKey(0)
+                # cv2.destroyAllWindows()
             if opts.check_dot_locations:
                 coords_of_pts = list(zip(*np.where(Y[i])[0:2]))
                 control_pt_coords = [list(zip(*el)) for el in details["coord"]]
@@ -652,7 +698,6 @@ for model_path in models:
                     out_folder = error_dir
                 else:
                     out_folder = Path(model_path).parent
-                print("trying to make the following directory:", error_dir)
                 Path(error_dir).mkdir(parents=True, exist_ok=True)
                 gt_pts = np.where(Y[i] > 0)
                 # fig = plt.figure()
@@ -683,14 +728,13 @@ for model_path in models:
                     plt.scatter(gt_pts[1], gt_pts[0], 4, [[1, 0, 0.157]])
 
                 if opts.coco:
-                    resize_factor = 2.5
                     gt_polygons = []
                     gt_annots = []
                     for annot in coco_data.imgToAnns[img_ids[i]]:
                         annot = annot["segmentation"][0]
                         annot = list(zip(annot[::2], annot[1::2]))
                         annot = [
-                            tuple([int(el * resize_factor) for el in tup])
+                            tuple([int(el * opts.vis_rescale_factor) for el in tup])
                             for tup in annot
                         ]
                         gt_annots.append(annot)
@@ -706,8 +750,8 @@ for model_path in models:
                     base_img = cv2.resize(
                         cv2.cvtColor(img_orig, cv2.COLOR_RGB2BGR),
                         (0, 0),
-                        fx=resize_factor,
-                        fy=resize_factor,
+                        fx=opts.vis_rescale_factor,
+                        fy=opts.vis_rescale_factor,
                     )
                     predictions = np.zeros(base_img.shape, dtype=np.uint8)
                     ground_truth = np.zeros(base_img.shape, dtype=np.uint8)
@@ -720,7 +764,14 @@ for model_path in models:
                                     [
                                         tuple(
                                             reversed(
-                                                [int(el * resize_factor) for el in tup]
+                                                [
+                                                    int(
+                                                        el
+                                                        * opts.vis_rescale_factor
+                                                        / opts.img_rescale_factor
+                                                    )
+                                                    for el in tup
+                                                ]
                                             )
                                         )
                                         for tup in zip(*egg_contour)
@@ -746,7 +797,7 @@ for model_path in models:
                     #             draw_line(ground_truth, [gt_annots[i]], color=COL_W)
                     #             break
                     #         draw_line(ground_truth, [gt_annots[i]], color=COL_R)
-                    draw_polygons_based_on_overlap(
+                    recall, num_false_pos = draw_polygons_based_on_overlap(
                         gt_polygons,
                         gt_annots,
                         predicted_polygons,
@@ -754,6 +805,34 @@ for model_path in models:
                         COL_G,
                         debug=False,
                     )
+                    if recall == 1 and num_false_pos == 0:
+                        num_perfect_predictions += 1
+                    recall_by_img.append(recall)
+                    false_pos_counts_by_img.append(num_false_pos)
+                    print(f'just appended to num_false_pos. Length of list: {len(false_pos_counts_by_img)}')
+                    if opts.chamber_types:
+                        cf = CircleFinder(
+                            img, img_basename, allowSkew=True, model=model
+                        )
+                        try:
+                            (
+                                circles,
+                                avgDists,
+                                numRowsCols,
+                                rotatedImg,
+                                rotation_angle,
+                            ) = cf.findCircles(predict_resize_factor=1)
+                            basename_split_by_ext = os.path.splitext(img_basename)
+                            chamber_type_accuracy_by_img.append(
+                                chamber_type_map[
+                                    f"{basename_split_by_ext[0]}{basename_split_by_ext[1].upper()}"
+                                ]
+                                == cf.ct
+                            )
+                            if chamber_type_accuracy_by_img[-1] == True and recall < 1:
+                                num_imperfect_predictions += 1
+                        except ValueError:
+                            chamber_type_accuracy_by_img.append(False)
                     draw_polygons_based_on_overlap(
                         predicted_polygons,
                         predicted_annots,
@@ -925,4 +1004,44 @@ for model_path in models:
                 ensure_ascii=False,
                 indent=4,
             )
+        if opts.coco:
+            headers = ["image name", "recall", "# false pos."]
+            if opts.chamber_types:
+                headers.append("successful chamber detection")
+            detailed_error_path = dest.split("errors.json")[0] + "detailed_errors.json"
+            with open(detailed_error_path, "w") as f:
+                # count # images with 100 % recall and 0 false positives
+                detailed_stats = {
+                    "num_images_analyzed": len(X_names),
+                    "num_images_with_perfect_pred": num_perfect_predictions,
+                    "num_images_with_false_positives": np.count_nonzero(
+                        false_pos_counts_by_img
+                    ),
+                }
+                if opts.chamber_types:
+                    detailed_stats[
+                        "num_images_with_imperfect_successful_pred"
+                    ] = num_imperfect_predictions
+                    detailed_stats["num_overall_successful_images"] = (
+                        detailed_stats["num_images_with_imperfect_successful_pred"]
+                        + detailed_stats["num_images_with_perfect_pred"]
+                    )
+                json.dump(detailed_stats, f, ensure_ascii=False, indent=4)
+            html_error_path = dest.split(".json")[0] + ".html"
+            with open(html_error_path, "w") as f:
+                f.write('<table style="width: 100%;" border="0">\n')
+                f.write("<tbody><tr>")
+                for header in headers:
+                    f.write(f"<td><strong>{header}</strong></td>\n")
+                f.write("<tr>\n")
+                for i, xname in enumerate(X_names):
+                    f.write("<tr>")
+                    f.write(f"<td>{os.path.basename(xname)}</td>\n")
+                    f.write(f"<td>{recall_by_img[i]}</td>\n")
+                    f.write(f"<td>{false_pos_counts_by_img[i]}</td>\n")
+                    if opts.chamber_types:
+                        f.write(f"<td>{chamber_type_accuracy_by_img[i]}</td>\n")
+                f.write("</tbody>\n")
+                f.write("</table>")
+
 print("Total run time:", timeit.default_timer() - start_time)

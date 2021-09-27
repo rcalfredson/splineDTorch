@@ -1,5 +1,6 @@
 from typing import Optional
 import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 from splinedist.config import Config
 from splinedist.models.database import SplineDistData2D, SplineDistDataStatic
@@ -184,16 +185,35 @@ class Looper:
         self.update_errors()
         if self.plots is not None:
             self.plot()
+            # self.plot_weights_by_layer()
         self.log()
         return self.mean_abs_err
 
     def update_errors(self):
         self.mean_err = sum(self.err) / self.n_samples_per_epoch
-        print('number steps per epoch:', len(self.abs_err))
-        print('avg. value of the abs err entries:', np.mean(self.abs_err))
         self.mean_abs_err = np.mean(self.abs_err)
         self.running_mean_abs_err.append(self.mean_abs_err)
         self.std = np.array(self.err).std()
+
+    def plot_weights_by_layer(self):
+        weights_by_layer = {}
+        for param in self.network.named_parameters():
+            layer_name = ".".join(param[0].split(".")[:2])
+            weights_flattened = param[1].view(-1)
+            if layer_name not in weights_by_layer:
+                weights_by_layer[layer_name] = []
+                weights_by_layer[layer_name].append(weights_flattened)
+            else:
+                weights_by_layer[layer_name].append(weights_flattened)
+        for layer in weights_by_layer:
+            weights_by_layer[layer] = torch.cat(weights_by_layer[layer])
+            plt.figure()
+            weights_as_np = weights_by_layer[layer].cpu().detach().numpy()
+            plt.hist(weights_as_np, bins=25)
+            plt.title(f"Weights for layer {layer}")
+            print('min and max:', np.amin(weights_as_np), np.amax(weights_as_np))
+            plt.show()
+            input()
 
     def plot(self):
         """Plot true vs predicted counts and loss."""

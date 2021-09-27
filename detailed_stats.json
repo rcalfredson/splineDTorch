@@ -1,0 +1,7 @@
+{
+    "num_images_analyzed": 3,
+    "num_images_with_perfect_pred": 1,
+    "num_images_with_false_positives": 1,
+    "num_images_with_imperfect_successful_pred": 1,
+    "num_overall_successful_images": 2
+}

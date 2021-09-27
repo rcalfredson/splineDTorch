@@ -194,10 +194,14 @@ class ConvCat(nn.Module):
         return torch.cat([self.conv(to_conv), to_cat], dim=1)
 
 
-def conv_block(in_channels, out_channels, kernel_size, N, stride=1, activation="relu"):
+def conv_block(in_channels, out_channels, kernel_size, N, stride=1, activation="relu", batch_norm=False):
     activation = {"relu": nn.ReLU(), "sigmoid": nn.Sigmoid(), "linear": None}[
         activation.lower()
     ]
+    if batch_norm is True:
+        batch_norm = nn.BatchNorm2d(out_channels)
+    else:
+        batch_norm = None
 
     def block(in_channels):
         steps = [
@@ -211,7 +215,9 @@ def conv_block(in_channels, out_channels, kernel_size, N, stride=1, activation="
             ),
         ]
         if activation is not None:
-            steps += [activation]
+            if batch_norm is not None:
+                steps.append(batch_norm)
+            steps.append(activation)
         return nn.Sequential(*steps)
 
     obj = nn.Sequential(
@@ -278,11 +284,13 @@ class SplineDist2D(nn.Module):
             self.config.net_conv_after_backbone,
             self.config.kernel_size,
             1,
+            batch_norm=self.config.expanded_batch_norm
         )
 
     def add_output_layers(self):
         self.output_prob_layer = conv_block(
-            4 * self.config.n_filter_base, 1, (1, 1), 1, 1, "sigmoid"
+            4 * self.config.n_filter_base, 1, (1, 1), 1, 1, "sigmoid",
+            batch_norm=self.config.expanded_batch_norm
         )
         self.output_dist_layer = conv_block(
             4 * self.config.n_filter_base,
@@ -291,6 +299,7 @@ class SplineDist2D(nn.Module):
             1,
             1,
             "linear",
+            batch_norm=self.config.expanded_batch_norm
         )
 
     def _make_permute_axes(
@@ -374,6 +383,7 @@ class SplineDist2D(nn.Module):
                     out_channels=self.config.n_filter_base,
                     kernel_size=self.config.kernel_size,
                     N=self.config.n_conv_per_depth,
+                    batch_norm=self.config.expanded_batch_norm
                 )
             )
 

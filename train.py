@@ -14,6 +14,7 @@ import datetime
 import functools
 from glob import glob
 import json
+import math
 import numpy as np
 import os
 from pathlib import Path
@@ -91,6 +92,13 @@ def options():
     parser.add_argument(
         "-m", "--model_path", default="", help="Path of an existing model to load"
     )
+    parser.add_argument(
+        "--init_dists",
+        help="path to a JSON file used to initialize the weights of"
+        " the neural net. Its keys are names of net layers, and its values are"
+        ' dicts of the form {"mean": float, "var": float}, describing a Gaussian.'
+        " The weights of any layer not names in ther",
+    )
     parser.add_argument("--plot", help="Add plots", action="store_true")
     parser.add_argument(
         "--left_col_plots",
@@ -118,9 +126,9 @@ def options():
         action="store_true",
     )
     parser.add_argument(
-        '--debug_vis',
-        help='show image and segmentation masks in a live viewer for debugging',
-        action='store_true'
+        "--debug_vis",
+        help="show image and segmentation masks in a live viewer for debugging",
+        action="store_true",
     )
 
     return parser.parse_args()
@@ -130,7 +138,7 @@ opts = options()
 # create a folder for artifacts for this machine if needed
 results_for_host = f"./results_{platform.node()}"
 if opts.debug:
-    results_for_host = os.path.join(results_for_host, 'debug')
+    results_for_host = os.path.join(results_for_host, "debug")
 Path(results_for_host).mkdir(exist_ok=True, parents=True)
 if not os.path.isdir(data_dir(must_exist=False)):
     Path(data_dir(must_exist=False)).mkdir(parents=True, exist_ok=True)
@@ -520,7 +528,26 @@ if opts.model_path != "":
         with open(lr_files[0]) as f:
             lrs = json.load(f)
         learning_rate = list(lrs.values())[-1]
-
+if opts.init_dists is not None:
+    with open(opts.init_dists) as f:
+        init_dists = json.load(f)
+    for n, module in model.named_modules():
+        layer_name = ".".join(n.split(".")[:2])
+        if layer_name not in init_dists:
+            continue
+        try:
+            with torch.no_grad():
+                module.weight = torch.nn.Parameter(
+                    torch.normal(
+                        init_dists[layer_name]["mean"]
+                        * torch.ones(module.weight.shape),
+                        math.sqrt(init_dists[layer_name]["var"])
+                        * torch.ones(module.weight.shape),
+                    )
+                )
+        except AttributeError as exc:
+            pass
+model.cuda()
 median_size = calculate_extents(
     [mask for sublist in masks.values() for mask in sublist], np.median
 )
@@ -568,24 +595,33 @@ valid_looper = Looper(
     left_col_plots=opts.left_col_plots,
 )
 
+torch.save(
+    model.state_dict(),
+    os.path.join(
+        results_for_host,
+        f"splinedist_{config.backbone.name}_{train_ts}_pre_training"
+        f"_{platform.node()}.pth".replace(":", "-"),
+    ),
+)
+
 current_best = np.infty
-for i, epoch in enumerate(range(config.train_epochs)):
+for epoch in range(config.train_epochs):
     start_time = timeit.default_timer()
     current_lr = optimizer.param_groups[0]["lr"]
     if len(lr_history) == 0 or lr_history["last"] != current_lr:
         lr_history["last"] = current_lr
-        lr_history[f"epoch_{i+1}"] = current_lr
+        lr_history[f"epoch_{epoch+1}"] = current_lr
         write_lr_history(config)
     start_time = timeit.default_timer()
     print(f"Epoch {epoch + 1}\n")
 
-    train_looper.run(i)
-    if i % opts.val_interval == 0:
+    train_looper.run(epoch)
+    if epoch % opts.val_interval == 0:
         with torch.no_grad():
-            val_loss = valid_looper.run(i)
+            val_loss = valid_looper.run(epoch)
         lr_scheduler.step(val_loss)
         new_best = val_loss < current_best
-        reachedSaveInterval = i % 20 == 0
+        reachedSaveInterval = epoch % 1 == 0
         if new_best:
             current_best = val_loss
             for f in glob(
@@ -600,7 +636,7 @@ for i, epoch in enumerate(range(config.train_epochs)):
                 model.state_dict(),
                 os.path.join(
                     results_for_host,
-                    f"splinedist_{config.backbone.name}_{train_ts}_best_epoch{i+1}"
+                    f"splinedist_{config.backbone.name}_{train_ts}_best_epoch{epoch+1}"
                     f"_{platform.node()}.pth".replace(":", "-"),
                 ),
             )
@@ -610,7 +646,7 @@ for i, epoch in enumerate(range(config.train_epochs)):
                 model.state_dict(),
                 os.path.join(
                     results_for_host,
-                    f"splinedist_{config.backbone.name}_iter{i}.pth",
+                    f"splinedist_{config.backbone.name}_iter{epoch}.pth",
                 ),
             )
             print("Saving a regular interval export")
