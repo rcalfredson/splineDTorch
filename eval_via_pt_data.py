@@ -21,9 +21,10 @@ from pycocotools.coco import COCO
 import random
 from shapely.geometry import Polygon, Point
 from splinedist.config import Config
+from splinedist.models.database import SplineDistData2D
 from splinedist.models.model2d import SplineDist2D
 from splinedist.plot.plot import _draw_polygons
-from splinedist.utils import data_dir, get_interpolated_points
+from splinedist.utils import data_dir, get_interpolated_points, get_contoursize_max
 import spline_generator as sg
 import sys
 
@@ -280,8 +281,9 @@ def get_smoothed_egg_outline_img():
 if opts.no_dots:
     X_names = []
     for single_path in opts.dataPath.split(","):
-        X_names.extend(sorted(glob("%s/*.jpg" % single_path)))
-        X_names.extend(sorted(glob("%s/*.JPG" % single_path)))
+        for ext in ('jpg', 'JPG', 'png'):
+            X_names.extend(sorted(glob("%s/*.%s" % (single_path, ext))))
+
 elif opts.coco:
     coco_data = COCO(opts.coco)
     img_ids = list(coco_data.imgs.keys())
@@ -301,15 +303,28 @@ for i, x_name in enumerate(list(X_names)):
         if os.path.exists(name_alt_ext):
             X_names.insert(i, name_alt_ext)
 X = list([np.array(img) for img in map(Image.open, X_names)])
+
+
+class AggregateErrorOrganizer:
+    def __init__(self, chamber_types=None):
+        self.chamber_types = chamber_types
+        if self.chamber_types:
+            with open(self.chamber_types) as f:
+                self.chamber_type_map = json.load(f)
+        self.reset()
+
+    def reset(self):
+        self.recall_by_img, self.false_pos_counts_by_img = [], []
+        self.num_perfect_predictions = 0
+        self.chamber_type_accuracy_by_img = []
+        self.num_imperfect_predictions = 0
+
+
 if not opts.skip_err:
     if opts.coco:
-        recall_by_img, false_pos_counts_by_img = [], []
-        num_perfect_predictions = 0
-        if opts.chamber_types:
-            with open(opts.chamber_types) as f:
-                chamber_type_map = json.load(f)
-            chamber_type_accuracy_by_img = []
-            num_imperfect_predictions = 0
+        aggregate_error_organizer = AggregateErrorOrganizer(
+            chamber_types=opts.chamber_types
+        )
         Y = []
         for i, img_id in enumerate(coco_data.imgs):
             loaded_img = cv2.imread(X_names[i])
@@ -400,7 +415,7 @@ def create_and_save_img(img_gen_func):
     current_figsize = fig.get_size_inches()
     fig.set_size_inches(current_figsize[0] * 2, current_figsize[1] * 2)
     plt.savefig("debug/temp.png", bbox_inches="tight", pad_inches=0, dpi=100)
-    plt.close('all')
+    plt.close("all")
 
 
 saved_error_examples = {}
@@ -436,7 +451,6 @@ for model_path in models:
     else:
         model.load_state_dict(loaded_model)
     for i, img in enumerate(X):
-        input('starting iteration for a new image')
         predict_start = timeit.default_timer()
         img_basename = os.path.basename(X_names[i])
         img_orig = img
@@ -491,6 +505,12 @@ for model_path in models:
             #     print('writing')
             #     print('image:', final[:20, :20], file=f)
             # exit()
+            if crop_off_lower:
+                # cv2.imshow('debug', final)
+                final = final[:round(final.shape[0] / 2), :]
+                img_display = img_display[:round(img_display.shape[0] / 2), :]
+            # cv2.imshow('debug', final)
+            # cv2.waitKey(0)
             img = normalize(final, 1, 99.8, axis=axis_norm)
             img_copy = normalize(img_copy, 1, 99.8, axis=axis_norm)
             # DEBUG_GOOD
@@ -499,7 +519,6 @@ for model_path in models:
             #     "after normalization (no contrast adjustment)",
             #     cv2.resize(img_copy, (0, 0), fx=0.5, fy=0.5),
             # )
-            cv2.waitKey(0)
             #
             img = img.astype(np.float32)
             labels, details = model.predict_instances(img)
@@ -547,6 +566,7 @@ for model_path in models:
 
             if opts.vis:
                 img_show = cv2.cvtColor(np.array(img_display), cv2.COLOR_RGB2BGR)
+                un_annotated = np.array(img_show)
                 coord, points, prob = (
                     details["coord"],
                     details["points"],
@@ -588,6 +608,10 @@ for model_path in models:
                 # cv2.imshow(
                 #     f"{X_names[i]} (zoom level {predict_resize_factor})", img_show
                 # )
+                # cv2.imshow(
+                #     f"unannot {X_names[i]}", un_annotated
+                # )
+                # print("num predicted:", num_predicted)
                 # cv2.waitKey(0)
                 # cv2.destroyAllWindows()
             if opts.check_dot_locations:
@@ -806,10 +830,11 @@ for model_path in models:
                         debug=False,
                     )
                     if recall == 1 and num_false_pos == 0:
-                        num_perfect_predictions += 1
-                    recall_by_img.append(recall)
-                    false_pos_counts_by_img.append(num_false_pos)
-                    print(f'just appended to num_false_pos. Length of list: {len(false_pos_counts_by_img)}')
+                        aggregate_error_organizer.num_perfect_predictions += 1
+                    aggregate_error_organizer.recall_by_img.append(recall)
+                    aggregate_error_organizer.false_pos_counts_by_img.append(
+                        num_false_pos
+                    )
                     if opts.chamber_types:
                         cf = CircleFinder(
                             img, img_basename, allowSkew=True, model=model
@@ -823,16 +848,24 @@ for model_path in models:
                                 rotation_angle,
                             ) = cf.findCircles(predict_resize_factor=1)
                             basename_split_by_ext = os.path.splitext(img_basename)
-                            chamber_type_accuracy_by_img.append(
-                                chamber_type_map[
+                            aggregate_error_organizer.chamber_type_accuracy_by_img.append(
+                                aggregate_error_organizer.chamber_type_map[
                                     f"{basename_split_by_ext[0]}{basename_split_by_ext[1].upper()}"
                                 ]
                                 == cf.ct
                             )
-                            if chamber_type_accuracy_by_img[-1] == True and recall < 1:
-                                num_imperfect_predictions += 1
+                            if (
+                                aggregate_error_organizer.chamber_type_accuracy_by_img[
+                                    -1
+                                ]
+                                == True
+                                and recall < 1
+                            ):
+                                aggregate_error_organizer.num_imperfect_predictions += 1
                         except ValueError:
-                            chamber_type_accuracy_by_img.append(False)
+                            aggregate_error_organizer.chamber_type_accuracy_by_img.append(
+                                False
+                            )
                     draw_polygons_based_on_overlap(
                         predicted_polygons,
                         predicted_annots,
@@ -1013,15 +1046,15 @@ for model_path in models:
                 # count # images with 100 % recall and 0 false positives
                 detailed_stats = {
                     "num_images_analyzed": len(X_names),
-                    "num_images_with_perfect_pred": num_perfect_predictions,
+                    "num_images_with_perfect_pred": aggregate_error_organizer.num_perfect_predictions,
                     "num_images_with_false_positives": np.count_nonzero(
-                        false_pos_counts_by_img
+                        aggregate_error_organizer.false_pos_counts_by_img
                     ),
                 }
                 if opts.chamber_types:
                     detailed_stats[
                         "num_images_with_imperfect_successful_pred"
-                    ] = num_imperfect_predictions
+                    ] = aggregate_error_organizer.num_imperfect_predictions
                     detailed_stats["num_overall_successful_images"] = (
                         detailed_stats["num_images_with_imperfect_successful_pred"]
                         + detailed_stats["num_images_with_perfect_pred"]
@@ -1037,11 +1070,16 @@ for model_path in models:
                 for i, xname in enumerate(X_names):
                     f.write("<tr>")
                     f.write(f"<td>{os.path.basename(xname)}</td>\n")
-                    f.write(f"<td>{recall_by_img[i]}</td>\n")
-                    f.write(f"<td>{false_pos_counts_by_img[i]}</td>\n")
+                    f.write(f"<td>{aggregate_error_organizer.recall_by_img[i]}</td>\n")
+                    f.write(
+                        f"<td>{aggregate_error_organizer.false_pos_counts_by_img[i]}</td>\n"
+                    )
                     if opts.chamber_types:
-                        f.write(f"<td>{chamber_type_accuracy_by_img[i]}</td>\n")
+                        f.write(
+                            f"<td>{aggregate_error_organizer.chamber_type_accuracy_by_img[i]}</td>\n"
+                        )
                 f.write("</tbody>\n")
                 f.write("</table>")
+            aggregate_error_organizer.reset()
 
 print("Total run time:", timeit.default_timer() - start_time)
