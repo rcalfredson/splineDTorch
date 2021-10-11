@@ -13,7 +13,7 @@ p.add_argument(
     "error_dir", help="Path to folder containing error files in JSON format."
 )
 opts = p.parse_args()
-error_files = glob(os.path.join(opts.error_dir, "*_errors.json"))
+error_files = glob(os.path.join(opts.error_dir, "*.pth_errors.json"))
 headers = (
     "name",
     "mean abs. error",
@@ -36,6 +36,7 @@ months = [m.lower() for m in calendar.month_abbr[1:]]
 
 def generate_name_str(filename):
     num_epochs = filename.split("epochs")[0].split("_")[-1]
+    print('filename:', filename)
     date, time = filename.split("_")[-2].split(" ")
     split_date = date.split("-")
     date_num = split_date[-1]

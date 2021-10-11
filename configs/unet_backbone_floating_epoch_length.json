@@ -1,0 +1,9 @@
+{
+    "backbone": "unet_full",
+    "train_epochs": 400,
+    "train_steps_per_epoch": null,
+    "validation_batch_size": 4,
+    "validation_steps_per_epoch": null,
+    "zoom_min": 0.9,
+    "zoom_max": 1.1
+}

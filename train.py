@@ -42,7 +42,6 @@ from tifffile import imread
 import timeit
 from util import background_color, fill_in_blanks, get_border_vals
 
-import scipy.ndimage as ndi
 from tqdm import tqdm
 
 # python trainByBatchLinux.py 10 "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4"
@@ -130,6 +129,11 @@ def options():
         "--debug_vis",
         help="show image and segmentation masks in a live viewer for debugging",
         action="store_true",
+    )
+    parser.add_argument(
+        "--variance_subtract_op",
+        help="TEMPORARY arg: specify the type of subtraction to use in the centered"
+        ' variance calculation (options: "intrinsic" or "torch")',
     )
 
     return parser.parse_args()
@@ -300,25 +304,6 @@ def random_intensity_change(img):
     return img
 
 
-def random_zoom(img: torch.Tensor, mask: torch.Tensor):
-    if config.zoom_min == None or config.zoom_max == None:
-        return
-    zoom_level = np.random.uniform(config.zoom_min, config.zoom_max)
-    zoomed_img = ndi.zoom(img, zoom_level, order=3)
-    zoomed_mask = ndi.zoom(mask, zoom_level, order=0)
-    if zoom_level < 1:
-        new_img = np.empty(img.shape, dtype=np.uint8)
-        new_mask = np.zeros(mask.shape, dtype=np.uint8)
-        new_img[: zoomed_img.shape[0], : zoomed_img.shape[1]] = zoomed_img
-        new_img[:, zoomed_img.shape[1] :] = current_bg_color
-        new_img[zoomed_img.shape[0] :, :] = current_bg_color
-        new_mask[: zoomed_img.shape[0], : zoomed_img.shape[1]] = zoomed_mask
-    elif zoom_level > 1:
-        new_img = zoomed_img[: img.shape[0], : img.shape[1]]
-        new_mask = zoomed_mask[: img.shape[0], : img.shape[1]]
-    return (new_img, new_mask)
-
-
 model = SplineDist2D(config)
 model.cuda()
 learning_rate = config.train_learning_rate
@@ -365,7 +350,10 @@ if any(median_size > fov):
         "WARNING: median object size larger than field of view of the neural network."
     )
 
-optimizer = torch.optim.Adam(model.parameters(), learning_rate)
+adam_extra_kwargs = {}
+if opts.variance_subtract_op:
+    adam_extra_kwargs["variance_subtract_op"] = opts.variance_subtract_op
+optimizer = torch.optim.Adam(model.parameters(), learning_rate, **adam_extra_kwargs)
 lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, factor=config.lr_reduct_factor, verbose=True, patience=config.lr_patience
 )
@@ -468,6 +456,15 @@ if opts.export_at_end:
             + f"{platform.node()}_{train_ts}.pth".replace(":", "-"),
         ),
     )
+    with open(
+        os.path.join(
+            results_for_host,
+            f"splinedist_{config.backbone.name}_{train_ts}_mae_validation_history"
+            f"_{platform.node()}.pth".replace(":", "-"),
+        ),
+        "w",
+    ) as f:
+        json.dump({i: el for i, el in enumerate(valid_looper.running_mean_abs_err)}, f)
     plt.savefig(
         os.path.join(
             results_for_host,

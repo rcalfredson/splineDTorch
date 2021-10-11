@@ -1,6 +1,10 @@
 from csbdeep.utils import normalize
 import cv2
 import numpy as np
+from PIL import Image
+import random
+import scipy.ndimage as ndi
+from splinedist.config import Config
 from splinedist.rotation import rotate_image
 import timeit
 import torch
@@ -32,6 +36,24 @@ def random_fliprot(img: torch.Tensor, mask: torch.Tensor):
             img = np.flip(img, axis=ax)
             mask = np.flip(mask, axis=ax)
     return img, mask
+
+def random_zoom(img: torch.Tensor, mask: torch.Tensor, config: Config):
+        if config.zoom_min == None or config.zoom_max == None:
+            return
+        zoom_level = np.random.uniform(config.zoom_min, config.zoom_max)
+        zoomed_img = ndi.zoom(img, zoom_level, order=3)
+        zoomed_mask = ndi.zoom(mask, zoom_level, order=0)
+        if zoom_level < 1:
+            new_img = np.empty(img.shape, dtype=np.uint8)
+            new_mask = np.zeros(mask.shape, dtype=np.uint8)
+            new_img[: zoomed_img.shape[0], : zoomed_img.shape[1]] = zoomed_img
+            new_img[:, zoomed_img.shape[1] :] = current_bg_color
+            new_img[zoomed_img.shape[0] :, :] = current_bg_color
+            new_mask[: zoomed_img.shape[0], : zoomed_img.shape[1]] = zoomed_mask
+        elif zoom_level > 1:
+            new_img = zoomed_img[: img.shape[0], : img.shape[1]]
+            new_mask = zoomed_mask[: img.shape[0], : img.shape[1]]
+        return (new_img, new_mask)
 
 class Augmenter:
     def __init__(self, config, opts, axis_norm=(0, 1), normalize=True):
@@ -136,10 +158,10 @@ class Augmenter:
             # cv2.imshow('img_after', x.astype(np.uint8))
             # cv2.imshow('mask_after', y)
             # cv2.waitKey()
-            # x, y = random_zoom(x, y)
+            x, y = random_zoom(x, y, self.config)
             # x = self.add_clahe_contrast_adj(x)
-            # x = self.add_color_jitter(x)
-            # x = self.add_blur(x)
+            x = self.add_color_jitter(x)
+            x = self.add_blur(x)
             x, y = random_fliprot(x, y)
             # x_alt, y_alt = random_360rot(x, y, current_bg_color)
 
@@ -148,7 +170,7 @@ class Augmenter:
             # cv2.imshow("immediately after rotation", x_alt)
             # print('current bg color:', current_bg_color)
             # cv2.waitKey(0)
-            x, y = random_360rot(x, y)
+            # x, y = random_360rot(x, y)
             # x_prenorm = x
             if self.normalize:
                 x = normalize(x, 1, 99.8, axis=self.axis_norm)

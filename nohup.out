@@ -2,3 +2,25 @@ usage: trainByBatchLinux.py [-h]
                             [--n_repeats N_REPEATS | --existing_nets EXISTING_NETS]
                             [--train_params TRAIN_PARAMS | --train_params_list TRAIN_PARAMS_LIST]
 trainByBatchLinux.py: error: unrecognized arguments: /dev/null
+** fvcore version of PathManager will be deprecated soon. **
+** Please migrate to the version in iopath repo. **
+https://github.com/facebookresearch/iopath 
+
+Traceback (most recent call last):
+  File "trainByBatchLinux.py", line 70, in <module>
+    run_one_training(opts.train_params)
+  File "trainByBatchLinux.py", line 51, in run_one_training
+    preexec_fn=os.setsid,
+  File "/home/robert/anaconda3/envs/torch-py37/lib/python3.7/subprocess.py", line 341, in call
+    return p.wait(timeout=timeout)
+  File "/home/robert/anaconda3/envs/torch-py37/lib/python3.7/subprocess.py", line 1019, in wait
+    return self._wait(timeout=timeout)
+  File "/home/robert/anaconda3/envs/torch-py37/lib/python3.7/subprocess.py", line 1653, in _wait
+    (pid, sts) = self._try_wait(0)
+  File "/home/robert/anaconda3/envs/torch-py37/lib/python3.7/subprocess.py", line 1611, in _try_wait
+    (pid, sts) = os.waitpid(self.pid, wait_flags)
+KeyboardInterrupt
+lid dir: /home/robert/anaconda3/envs/torch-py37/lib/python3.7/site-packages/torchvision-0.8.0a0+2f40a48-py3.7-linux-x86_64.egg/torchvision
+<class 'str'>
+loader dets: (<class '_frozen_importlib_external.ExtensionFileLoader'>, ['.cpython-37m-x86_64-linux-gnu.so', '.abi3.so', '.so'])
+Normalizing image channels independently.

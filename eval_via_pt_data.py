@@ -454,6 +454,7 @@ for model_path in models:
         predict_start = timeit.default_timer()
         img_basename = os.path.basename(X_names[i])
         img_orig = img
+        crop_off_lower = None
         for predict_resize_factor in (
             opts.img_rescale_factor,
         ):  # np.linspace(0.20, 0.26, 7):
@@ -598,22 +599,22 @@ for model_path in models:
                         )
                     )[0]
                     draw_line(img_show, [annot])
-                cv2.imwrite(
-                    os.path.join(
-                        "debug",
-                        f"errors_{path_components[-2]}_{path_components[-1]}_{os.path.basename(model_path)}.png",
-                    ),
-                    img_show,
+                # cv2.imwrite(
+                #     os.path.join(
+                #         "debug",
+                #         f"errors_{path_components[-2]}_{path_components[-1]}_{os.path.basename(model_path)}.png",
+                #     ),
+                #     img_show,
+                # )
+                cv2.imshow(
+                    f"{X_names[i]} (zoom level {predict_resize_factor})", img_show
                 )
-                # cv2.imshow(
-                #     f"{X_names[i]} (zoom level {predict_resize_factor})", img_show
-                # )
-                # cv2.imshow(
-                #     f"unannot {X_names[i]}", un_annotated
-                # )
-                # print("num predicted:", num_predicted)
-                # cv2.waitKey(0)
-                # cv2.destroyAllWindows()
+                cv2.imshow(
+                    f"unannot {X_names[i]}", un_annotated
+                )
+                print("num predicted:", num_predicted)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
             if opts.check_dot_locations:
                 coords_of_pts = list(zip(*np.where(Y[i])[0:2]))
                 control_pt_coords = [list(zip(*el)) for el in details["coord"]]

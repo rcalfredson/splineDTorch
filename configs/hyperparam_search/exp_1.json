@@ -5,7 +5,7 @@
     "skip_empties": false,
     "train_batch_size": 4,
     "train_epochs": 600,
-    "train_learning_rate": 3e-4,
+    "train_learning_rate": 3e-3,
     "train_patch_size": [
         160,
         160

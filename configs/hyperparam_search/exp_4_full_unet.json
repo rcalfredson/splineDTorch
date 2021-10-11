@@ -1,10 +1,10 @@
 {
-    "backbone": "unet_reduced",
+    "backbone": "unet_full",
     "focused_patch_proportion": 0.85,
     "skip_partials": true,
     "skip_empties": false,
     "train_batch_size": 4,
-    "train_epochs": 7,
+    "train_epochs": 600,
     "train_learning_rate": 3e-4,
     "train_patch_size": [
         240,
