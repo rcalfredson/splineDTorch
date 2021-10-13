@@ -102,6 +102,7 @@ class Augmenter:
         if np.random.random() < 0.3:
             return x
         try:
+            x = x.astype(np.uint8)
             clipLimit = np.random.randint(1, 17)
             lab = cv2.cvtColor(x, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
@@ -110,7 +111,7 @@ class Augmenter:
             limg = cv2.merge((cl, a, b))
             final = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
             return final
-        except cv2.error:
+        except cv2.error as exc:
             return x
 
     def add_blur(self, x):
@@ -158,11 +159,11 @@ class Augmenter:
             # cv2.imshow('img_after', x.astype(np.uint8))
             # cv2.imshow('mask_after', y)
             # cv2.waitKey()
-            x, y = random_zoom(x, y, self.config)
-            # x = self.add_clahe_contrast_adj(x)
+            # x, y = random_zoom(x, y, self.config)
+            x = self.add_clahe_contrast_adj(x)
             x = self.add_color_jitter(x)
             x = self.add_blur(x)
-            x, y = random_fliprot(x, y)
+            # x, y = random_fliprot(x, y)
             # x_alt, y_alt = random_360rot(x, y, current_bg_color)
 
             # x_alt = fill_in_blanks(x_alt, current_bg_color)
@@ -171,6 +172,8 @@ class Augmenter:
             # print('current bg color:', current_bg_color)
             # cv2.waitKey(0)
             # x, y = random_360rot(x, y)
+            # cv2.imshow('mask after rotation', 5*y)
+            # cv2.waitKey(0)
             # x_prenorm = x
             if self.normalize:
                 x = normalize(x, 1, 99.8, axis=self.axis_norm)

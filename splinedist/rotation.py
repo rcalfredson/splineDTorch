@@ -22,8 +22,6 @@ def to_int(tup):
 # returns image rotated by the given angle (in degrees, counterclockwise)
 def rotate_image_with_crop(img, angle, use_linear=True):
     image_center = tuple(np.array(img.shape[1::-1]) / 2)
-    print("shape of the image:", img.shape)
-    print("center of the rotation:", image_center)
     mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
     return cv2.warpAffine(
         img,
@@ -159,9 +157,6 @@ class RotationHelper:
         self.truncnorm_dist = get_truncated_normal()
 
     def get_rotation_angle(self):
-        self.angle = np.random.randint(0, 360)
-        # self.angle = 0
-        return
         while True:
             self.angle = np.random.randint(0, 360)
             self.angleRad = np.pi * self.angle / 180
@@ -238,106 +233,66 @@ class RotationHelper:
     def get_random_rot_patch(
         self, data, skip_empties=False, skip_partials=False, focused_patch_proportion=0
     ):
-        deformed_mask = None
+        sub_mask = None
         img_to_input = cv2.cvtColor(data[1].astype(np.uint8), cv2.COLOR_RGB2BGR) / 255
-        while type(deformed_mask) != np.ndarray:
+        while type(sub_mask) != np.ndarray:
             self.get_rotation_angle()
-            if np.random.random_sample() <= focused_patch_proportion:
-                rand_y, rand_x = self.get_focused_patch(data[0])
-            else:
-                # input('getting a random patch from second branch of conditional')
-                rand_y, rand_x = self.get_random_patch()
-            full_patch_cutoff_y = min(
-                int(rand_y + self.patch_size[0]), data[1].shape[0]
-            )
-            full_patch_cutoff_x = min(
-                int(rand_x + self.patch_size[1]), data[1].shape[1]
-            )
-            is_smaller_patch = full_patch_cutoff_y != int(
-                rand_y + self.patch_size[0]
-            ) or full_patch_cutoff_x != int(rand_x + self.patch_size[1])
-            deformed_image, deformed_mask = elasticdeform.deform_random_grid(
-                [img_to_input, data[0]],
-                sigma=3,
-                points=3,
-                axis=(0, 1),
-                order=[3, 0],
-                crop=(
-                    slice(int(rand_y), full_patch_cutoff_y),
-                    slice(int(rand_x), full_patch_cutoff_x),
+            corner_point = self.rotate_point(
+                (
+                    self.aabb_center[0] - 0.5 * self.patch_size[0],
+                    self.aabb_center[1] - 0.5 * self.patch_size[1],
                 ),
-                rotate=self.angle,
+                self.aabb_center,
+                self.angleRad,
             )
-            deformed_image = np.clip(deformed_image, a_min=0, a_max=1)
-            deformed_image = (255 * deformed_image).astype(np.uint8)
-            bgc = background_color(deformed_image)
-            if skip_empties and not np.any(deformed_mask):
-                deformed_mask = None
-            if (
-                deformed_mask is not None
-                and skip_partials
-                and len(get_border_vals(deformed_mask)) > 1
-            ):
-                # cv2.imshow("skipped", deformed_image.astype(np.uint8))
-                # print(
-                # "skipping a partial mask. Values were:",
-                # get_border_vals(deformed_mask),
-                # )
-                # cv2.waitKey(0)
-                deformed_mask = None
-                # cv2.imshow('good mask')
-        if any([deformed_mask.shape[i] < self.patch_size[i] for i in range(2)]):
-            new_img = np.full(
-                (self.patch_size[0], self.patch_size[1], 3),
-                fill_value=bgc,
-                dtype=np.uint8,
+            rotated_image = rotate_image(data[1], self.angle)[0]
+            egg_areas = np.unique(data[0], return_counts=True)[-1][1:]
+            if len(egg_areas) > 0:
+                avg_egg_size = np.mean(np.unique(data[0], return_counts=True)[-1][1:])
+            else:
+                avg_egg_size = 0
+            rotated_mask, bounds_post_rotation = rotate_image(
+            data[0], self.angle, use_linear=False
             )
-            new_img[
-                self.patch_size[0] - deformed_image.shape[0] :,
-                self.patch_size[1] - deformed_image.shape[1] :,
-            ] = deformed_image
-            new_mask = np.zeros(
-                (self.patch_size[0], self.patch_size[1]), dtype=np.uint8
+            rotated_corner_point = self.rotate_point(
+                corner_point, (self.height / 2, self.width / 2), -self.angleRad
             )
-            new_mask[
-                self.patch_size[0] - deformed_image.shape[0] :,
-                self.patch_size[1] - deformed_image.shape[1] :,
-            ] = deformed_mask
-            deformed_image = new_img
-            deformed_mask = new_mask
-        # print('image:', deformed_image.astype(np.uint8))
-        # print('mask:', deformed_mask)
-        # cv2.imshow('deformed image', cv2.resize(deformed_image.astype(np.uint8), (0, 0), fx=2.5, fy=2.5))
-        # cv2.imshow('deformed mask', cv2.resize(deformed_mask, (0, 0), fx=2.5, fy=2.5))
-        # cv2.waitKey(0)
-        unique_vals = get_unique_vals(deformed_mask, counts_only=True)
-        if len(unique_vals) == 0:
-            skip_frag_checks = True
-        else:
-            skip_frag_checks = False
-        if not skip_frag_checks:
-            avg_egg_size = np.mean(unique_vals)
-
-        sub_mask = deformed_mask
-        sub_img = deformed_image
-        if not skip_frag_checks:
-            mask_border_vals = get_border_vals(sub_mask)
+            rotated_corner_point = list(rotated_corner_point)
+            rotated_corner_point[0] += 0.5 * (bounds_post_rotation[0] - self.height)
+            rotated_corner_point[1] += 0.5 * (bounds_post_rotation[1] - self.width)
+            rcp = rotated_corner_point
+            sub_mask = rotated_mask[
+                int(rcp[0]) : int(rcp[0] + self.patch_size[0]),
+                int(rcp[1]) : int(rcp[1] + self.patch_size[1]),
+            ]
+            mask_border_vals = set(
+                np.concatenate(
+                    (
+                        sub_mask[[0, sub_mask.shape[0] - 1], :].ravel(),
+                        sub_mask[1:-1, [0, sub_mask.shape[1] - 1]].ravel(),
+                    )
+                )
+            )
             egg_indices, egg_sizes = np.unique(sub_mask, return_counts=True)
             too_small_indices = [
                 egg_indices[i]
                 for i in range(len(egg_indices))
-                if egg_sizes[i] <= 0.3 * avg_egg_size
-                and egg_indices[i] in mask_border_vals
+                if egg_sizes[i] <= 0.3 * avg_egg_size and egg_indices[i] in mask_border_vals
             ]
             too_small_mask = np.isin(sub_mask, too_small_indices)
             sub_mask[too_small_mask] = 0
-        sub_img = fill_in_blanks(sub_img, bgc)
-        # print('subimg:', sub_img)
-        # print('submask:', sub_mask)
-        # print('is smaller?', is_smaller_patch)
-        # cv2.imshow('subimg', cv2.resize(sub_img.astype(np.uint8), (0, 0), fx=3, fy=3, interpolation=cv2.INTER_NEAREST))
-        # cv2.imshow('submask', cv2.resize(sub_mask, (0, 0), fx=3, fy=3, interpolation=cv2.INTER_NEAREST))
-        # cv2.waitKey(0)
+            sub_img = rotated_image[
+                int(rcp[0]) : int(rcp[0] + self.patch_size[0]),
+                int(rcp[1]) : int(rcp[1] + self.patch_size[1]),
+            ]
+            if skip_empties and not np.any(sub_mask):
+                    sub_mask = None
+            if (
+                sub_mask is not None
+                and skip_partials
+                and len(get_border_vals(sub_mask)) > 1
+            ):
+                pass
         split_channels = split_by_channel(sub_img)
         return [
             np.expand_dims(sub_mask.astype(np.uint8), axis=0),

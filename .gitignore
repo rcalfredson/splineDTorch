@@ -132,6 +132,7 @@ dmypy.json
 .vscode
 splinedist_*.pth
 splinedist_*.png
+splinedist_*.json
 *lr_history*.json
 data_by_host/
 debug/
