@@ -1,17 +1,10 @@
-"""Main script used to train networks.
-"""
+"""Main script used to train networks."""
+
 import argparse
-from detectron2.data import transforms as T
 from splinedist.constants import DEVICE
 from matplotlib import pyplot as plt
-from numpy.core.defchararray import mod
 import torch
-import torchvision.transforms
-import torchvision.transforms.functional
-from csbdeep.utils import normalize
-import cv2
 import datetime
-import functools
 from glob import glob
 import json
 import math
@@ -26,7 +19,6 @@ import shutil
 import signal
 from splinedist.augmenter import Augmenter
 from splinedist.config import Config
-from splinedist.rotation import rotate_image
 from splinedist.looper import Looper
 from splinedist.models.model2d import SplineDist2D
 from splinedist.utils import (
@@ -40,9 +32,6 @@ from splinedist.utils import (
 import sys
 from tifffile import imread
 import timeit
-from util import background_color, fill_in_blanks, get_border_vals
-
-from tqdm import tqdm
 
 # python trainByBatchLinux.py 10 "--config configs/unet_backbone_rand_zoom.json --plot --val_interval 4"
 
@@ -147,7 +136,8 @@ if opts.debug:
 Path(results_for_host).mkdir(exist_ok=True, parents=True)
 if not os.path.isdir(data_dir(must_exist=False)):
     Path(data_dir(must_exist=False)).mkdir(parents=True, exist_ok=True)
-X = sorted(glob(os.path.join(DATA_BASE_DIR, opts.data_path, "images/*.tif")))
+image_dir = Path(DATA_BASE_DIR) / opts.data_path / "images"
+X = sorted([p for p in image_dir.glob("*") if p.suffix.lower() in (".tif", ".png")])
 img_filepaths = X
 masks = {k: [] for k in X}
 # X = [cv2.resize(img, (0, 0), fx=IMG_SCALING_FACTOR, fy=IMG_SCALING_FACTOR) for img in list(map(imread, X))]
