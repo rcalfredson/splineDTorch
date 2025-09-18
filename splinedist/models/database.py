@@ -215,7 +215,10 @@ class SplineDistDataStatic(SplineDistDataBase):
             sd_results = []
             for lbl in Y:
                 sd_results.append(spline_dist(lbl, self.contoursize_max))
-            dist = np.stack(sd_results)
+            if len(sd_results) == 1:
+                dist = np.expand_dims(sd_results[0], axis=0)
+            else:
+                dist = np.stack(sd_results)
             dist_mask = prob
 
         prob = np.expand_dims(prob, -1)
@@ -254,6 +257,7 @@ class SplineDistData2D(SplineDistDataBase):
         foreground_prob=0,
         n_samples=1,
         skip_dist_prob_calc=False,
+        force_even_patch_size=False,
         **kwargs,
     ):
 
@@ -280,7 +284,7 @@ class SplineDistData2D(SplineDistDataBase):
 
         self.skip_empties = skip_empties
         self.sample_patches = sample_patches
-        self.force_even_patch_size = kwargs.get("force_even_patch_size", False)
+        self.force_even_patch_size = force_even_patch_size
         self.focused_patch_proportion = focused_patch_proportion
         self.contoursize_max = contoursize_max
         self.n_samples = n_samples
@@ -367,7 +371,10 @@ class SplineDistData2D(SplineDistDataBase):
                 sd_results = []
                 for lbl in Y:
                     sd_results.append(spline_dist(lbl, self.contoursize_max))
-                dist = np.stack(sd_results)
+                if len(sd_results) == 1:
+                    dist = np.expand_dims(sd_results[0], axis=0)
+                else:
+                    dist = np.stack(sd_results)
                 dist_mask = prob
 
             prob = np.expand_dims(prob, -1)

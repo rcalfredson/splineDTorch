@@ -55,7 +55,6 @@ class Looper:
             b=self.config.train_completion_crop,
             foreground_prob=self.config.train_foreground_only,
             contoursize_max=self.config.contoursize_max,
-            force_even_patch_size=self.config.force_even_patch_size,
         )
 
         self.n_samples_per_img = 1 if self.validation else 1
@@ -84,6 +83,7 @@ class Looper:
                 skip_empties=self.config.skip_empties,
                 sample_patches=self.config.sample_patches,
                 focused_patch_proportion=self.config.focused_patch_proportion,
+                force_even_patch_size=self.config.force_even_patch_size,
                 **self.data_kwargs,
             )
         else:
@@ -116,6 +116,7 @@ class Looper:
             skip_empties=self.config.skip_empties,
             sample_patches=self.config.sample_patches,
             focused_patch_proportion=self.config.focused_patch_proportion,
+            force_even_patch_size=self.config.force_even_patch_size,
             **self.data_kwargs,
         )
         data_val_source = [[], []]

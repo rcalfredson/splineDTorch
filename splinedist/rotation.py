@@ -128,7 +128,6 @@ def sample_patches(
         focused_patch_proportion=focused_patch_proportion,
     )
     if force_even:
-        print("forcing even?")
         res = [pad_to_even(a) for a in res]
 
     return res

@@ -28,7 +28,7 @@ from splinedist.utils import (
     get_contoursize_max,
     grid_generator,
     phi_generator,
-    read_image
+    read_image,
 )
 import sys
 from tifffile import imread
@@ -343,7 +343,7 @@ if opts.variance_subtract_op:
     adam_extra_kwargs["variance_subtract_op"] = opts.variance_subtract_op
 optimizer = torch.optim.Adam(model.parameters(), learning_rate, **adam_extra_kwargs)
 lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, factor=config.lr_reduct_factor, verbose=True, patience=config.lr_patience
+    optimizer, factor=config.lr_reduct_factor, patience=config.lr_patience
 )
 augmenter = Augmenter(config, opts, axis_norm=axis_norm)
 model.prepare_for_training()
@@ -386,7 +386,7 @@ torch.save(
     ),
 )
 
-current_best = np.infty
+current_best = np.inf
 for epoch in range(config.train_epochs):
     start_time = timeit.default_timer()
     current_lr = optimizer.param_groups[0]["lr"]

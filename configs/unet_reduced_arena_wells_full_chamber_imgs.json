@@ -1,5 +1,6 @@
 {
     "backbone": "unet_reduced",
+    "force_even_patch_size": true,
     "sample_patches": false,
     "skip_partials": true,
     "train_batch_size": 1,
