@@ -98,12 +98,13 @@ if "outlines" in predictions:
 
 ## Dependencies
 
-- Python 3.8+  
+- Python 3.9+ (recommended: 3.13)
 - PyTorch  
 - NumPy, SciPy, Matplotlib  
 - Pillow  
 - [pycocotools](https://github.com/cocodataset/cocoapi)  
 - tifffile  
+- tqdm
 
 ---
 

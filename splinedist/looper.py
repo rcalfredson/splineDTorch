@@ -6,6 +6,7 @@ from splinedist.config import Config
 from splinedist.models.database import SplineDistData2D, SplineDistDataStatic
 from splinedist.models.model2d import SplineDist2D
 import torch
+from tqdm import tqdm
 
 import timeit
 
@@ -139,7 +140,11 @@ class Looper:
         self.predicted_values = []
         self.running_loss.append(0)
         self.network.train(not self.validation)
-        for j, datum in enumerate(self.data):
+        for j, datum in tqdm(
+            enumerate(self.data),
+            total=int(self.steps_per_epoch),
+            desc="Train" if not self.validation else "Valid",
+        ):
             start_t = timeit.default_timer()
             patches = torch.from_numpy(datum[0][0]).float().to(self.device)
             patches = patches.permute(0, 3, 1, 2)
