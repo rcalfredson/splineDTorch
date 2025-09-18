@@ -13,7 +13,7 @@ has_cv2_v4 = cv2.__version__.startswith("4")
 
 
 def spline_dist(a, contoursize_max=400):
-    dist = np.zeros((a.shape[0], a.shape[1], contoursize_max, 2))
+    dist = np.zeros((a.shape[0], a.shape[1], contoursize_max, 2), dtype=np.float32)
 
     obj_list = np.unique(a)
     obj_list = obj_list[1:]
@@ -86,7 +86,7 @@ def dist_to_coord(rhos, grid=(1, 1)):
 
     for i in range(2):
         coord[..., i, :] += rhos * (np.cos(phis) if i == 0 else np.sin(phis))
-        coord[..., i, :] = np.subtract(coord[..., i, :], 1 - 1/grid[i])
+        coord[..., i, :] = np.subtract(coord[..., i, :], 1 - 1 / grid[i])
     return coord[0] if is_single_image else coord
 
 

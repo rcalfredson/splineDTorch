@@ -8,8 +8,6 @@ from splinedist.geometry.geom2d import spline_dist
 from splinedist.rotation import sample_patches as sample_patches_rot
 from splinedist.sample_patches import get_valid_inds
 from splinedist.utils import edt_prob
-import torch
-import sys
 
 import matplotlib.pyplot as plt
 import cProfile
