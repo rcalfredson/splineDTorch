@@ -14,6 +14,7 @@ import sys
 import matplotlib.pyplot as plt
 import cProfile
 
+
 class SplineDistDataBase(RollingSequence):
     def __init__(
         self,
@@ -279,6 +280,7 @@ class SplineDistData2D(SplineDistDataBase):
 
         self.skip_empties = skip_empties
         self.sample_patches = sample_patches
+        self.force_even_patch_size = kwargs.get("force_even_patch_size", False)
         self.focused_patch_proportion = focused_patch_proportion
         self.contoursize_max = contoursize_max
         self.n_samples = n_samples
@@ -294,7 +296,6 @@ class SplineDistData2D(SplineDistDataBase):
         #                          valid_inds=self.get_valid_inds(k)) for k in idx]
 
         # random rotation sample_patches
-
         self.arrays = [
             sample_patches_rot(
                 (self.Y[k], self.X[k]),
@@ -302,6 +303,7 @@ class SplineDistData2D(SplineDistDataBase):
                 skip_empties=self.skip_empties,
                 bypass=not self.sample_patches,
                 focused_patch_proportion=self.focused_patch_proportion,
+                force_even=self.force_even_patch_size,
             )
             for k in idx
         ]

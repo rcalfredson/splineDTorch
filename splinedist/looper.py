@@ -55,6 +55,7 @@ class Looper:
             b=self.config.train_completion_crop,
             foreground_prob=self.config.train_foreground_only,
             contoursize_max=self.config.contoursize_max,
+            force_even_patch_size=self.config.force_even_patch_size,
         )
 
         self.n_samples_per_img = 1 if self.validation else 1
@@ -211,7 +212,7 @@ class Looper:
             weights_as_np = weights_by_layer[layer].cpu().detach().numpy()
             plt.hist(weights_as_np, bins=25)
             plt.title(f"Weights for layer {layer}")
-            print('min and max:', np.amin(weights_as_np), np.amax(weights_as_np))
+            print("min and max:", np.amin(weights_as_np), np.amax(weights_as_np))
             plt.show()
             input()
 
@@ -231,7 +232,7 @@ class Looper:
         elif self.left_col_plots == "mae":
             self.plots[0].set_xlabel("Epoch")
             self.plots[0].set_ylabel("Mean absolute error")
-            self.plots[0].set_ylim((0, 2.))
+            self.plots[0].set_ylim((0, 2.0))
             self.plots[0].plot(epochs, self.running_mean_abs_err)
 
         # loss
@@ -239,7 +240,7 @@ class Looper:
         self.plots[1].set_title("Train" if not self.validation else "Valid")
         self.plots[1].set_xlabel("Epoch")
         self.plots[1].set_ylabel("Loss")
-        self.plots[1].set_ylim((0, 2.))
+        self.plots[1].set_ylim((0, 2.0))
         self.plots[1].plot(epochs, self.running_loss)
 
         matplotlib.pyplot.pause(0.01)

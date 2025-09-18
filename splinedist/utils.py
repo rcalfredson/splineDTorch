@@ -4,8 +4,7 @@ import cv2
 import numpy as np
 import os
 import platform
-from scipy.ndimage.morphology import distance_transform_edt, binary_fill_holes
-from scipy.ndimage.measurements import find_objects
+from scipy.ndimage import binary_fill_holes, distance_transform_edt, find_objects
 from skimage.measure import regionprops
 import spline_generator as sg
 from splinedist.constants import DEVICE
@@ -137,6 +136,33 @@ def wrapIndex(t, k, M, half_support):
             wrappedT = t - (k - M)
     return wrappedT
 
+
+def pad_to_even(arr: np.ndarray) -> np.ndarray:
+    """Pad array by 1 pixel along the first two axes (H, W) if odd-sized,
+    Handles arrays shaped (H, W), (H, W, C), (1, H, W), or (1, H, W, C).
+    """
+    squeezed = False
+    if arr.ndim >= 3 and arr.shape[0] == 1:  # leading singleton
+        arr2d = arr[0]
+        squeezed = True
+    else:
+        arr2d = arr
+
+    # pad spatial dims
+    pad_width = []
+    for dim_size in arr2d.shape[:2]:
+        if dim_size % 2 == 0:
+            pad_width.append((0, 0))
+        else:
+            pad_width.append((0, 1))
+
+    pad_width.extend([(0, 0)] * (arr2d.ndim - 2))
+    arr_padded = np.pad(arr2d, pad_width, mode="constant")
+
+    if squeezed:
+        arr_padded = np.expand_dims(arr_padded, axis=0)
+
+    return arr_padded
 
 def phi_generator(M, contoursize_max, debug=False):
     ts = np.linspace(0, float(M), num=contoursize_max, endpoint=False)

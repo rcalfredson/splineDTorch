@@ -4,6 +4,7 @@
     "deform_sigma": 0,
     "expanded_batch_norm": false,
     "focused_patch_proportion": 0,
+    "force_even_patch_size": false,
     "grid_subsampling_factor": [
         2,
         2

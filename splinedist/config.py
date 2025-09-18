@@ -17,16 +17,17 @@ class Config:
             contoursize_max if contoursize_max is None else int(contoursize_max)
         )
         self.deform_sigma = float(self.set_conf_param("deform_sigma"))
-        self.expanded_batch_norm = self.set_conf_param('expanded_batch_norm')
-        self.focused_patch_proportion = self.set_conf_param('focused_patch_proportion')
+        self.expanded_batch_norm = self.set_conf_param("expanded_batch_norm")
+        self.focused_patch_proportion = self.set_conf_param("focused_patch_proportion")
+        self.force_even_patch_size = self.set_conf_param("force_even_patch_size")
         self.grid = normalize_grid(self.set_conf_param("grid_subsampling_factor"), 2)
         self.lr_reduct_factor = self.set_conf_param("lr_reduct_factor")
         self.lr_patience = self.set_conf_param("lr_patience")
         self.n_channel_in = n_channel_in
         self.n_dim = int(self.set_conf_param("n_dim"))
-        self.sample_patches = self.set_conf_param('sample_patches')
-        self.skip_empties = self.set_conf_param('skip_empties')
-        self.skip_partials = self.set_conf_param('skip_partials')
+        self.sample_patches = self.set_conf_param("sample_patches")
+        self.skip_empties = self.set_conf_param("skip_empties")
+        self.skip_partials = self.set_conf_param("skip_partials")
         self.n_params = 2 * int(self.set_conf_param("n_control_points"))
         self.train_background_reg = int(self.set_conf_param("train_background_reg"))
         self.train_batch_size = int(self.set_conf_param("train_batch_size"))
@@ -43,8 +44,8 @@ class Config:
         self.validation_steps_per_epoch = self.set_conf_param(
             "validation_steps_per_epoch"
         )
-        self.zoom_min = self.set_conf_param('zoom_min')
-        self.zoom_max = self.set_conf_param('zoom_max')
+        self.zoom_min = self.set_conf_param("zoom_min")
+        self.zoom_max = self.set_conf_param("zoom_max")
 
         # default config (can be overwritten by kwargs below)
         if self.backbone in (BackboneTypes.unet_full, BackboneTypes.unet_reduced):

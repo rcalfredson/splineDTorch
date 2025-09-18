@@ -1,14 +1,11 @@
 from csbdeep.utils import _raise
 import cv2
-import elasticdeform
 import numpy as np
 import random
 from scipy.stats import truncnorm
-import sys
 
-import matplotlib.pyplot as plt
-import random
-from util import background_color, fill_in_blanks, get_border_vals, tupleMul
+from splinedist.utils import pad_to_even
+from util import get_border_vals
 
 
 def split_by_channel(img):
@@ -91,14 +88,18 @@ def sample_patches(
     skip_partials=False,
     focused_patch_proportion=0,
     bypass=False,
+    force_even=False,
 ):
     selected_mask = random.choice(data[0])
     if bypass:
         split_channels = split_by_channel(data[1])
-        return [
+        res = [
             np.expand_dims(selected_mask.astype(np.uint8), axis=0),
             *[np.expand_dims(sc, axis=0) for sc in split_channels],
         ]
+        if force_even:
+            res = [pad_to_even(a) for a in res]
+        return res
 
     len(patch_size) == selected_mask.ndim or _raise(ValueError())
 
@@ -126,6 +127,9 @@ def sample_patches(
         skip_partials=skip_partials,
         focused_patch_proportion=focused_patch_proportion,
     )
+    if force_even:
+        print("forcing even?")
+        res = [pad_to_even(a) for a in res]
 
     return res
 
@@ -252,7 +256,7 @@ class RotationHelper:
             else:
                 avg_egg_size = 0
             rotated_mask, bounds_post_rotation = rotate_image(
-            data[0], self.angle, use_linear=False
+                data[0], self.angle, use_linear=False
             )
             rotated_corner_point = self.rotate_point(
                 corner_point, (self.height / 2, self.width / 2), -self.angleRad
@@ -277,7 +281,8 @@ class RotationHelper:
             too_small_indices = [
                 egg_indices[i]
                 for i in range(len(egg_indices))
-                if egg_sizes[i] <= 0.3 * avg_egg_size and egg_indices[i] in mask_border_vals
+                if egg_sizes[i] <= 0.3 * avg_egg_size
+                and egg_indices[i] in mask_border_vals
             ]
             too_small_mask = np.isin(sub_mask, too_small_indices)
             sub_mask[too_small_mask] = 0
@@ -286,7 +291,7 @@ class RotationHelper:
                 int(rcp[1]) : int(rcp[1] + self.patch_size[1]),
             ]
             if skip_empties and not np.any(sub_mask):
-                    sub_mask = None
+                sub_mask = None
             if (
                 sub_mask is not None
                 and skip_partials

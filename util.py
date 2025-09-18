@@ -11,7 +11,7 @@ import os, platform, sys, subprocess, csv, shutil
 import re, operator, time, inspect, bisect, collections, hashlib
 import itertools, glob, threading
 from PIL import Image, ImageFile
-from pkg_resources import parse_version
+from packaging.version import parse as parse_version
 import rdp as rdpPkg, shapely.geometry as sg, inflect
 
 import util
@@ -57,14 +57,13 @@ DEVNULL_OUT = open(os.devnull, "w")
 #  difficult install (reduces functionality)
 if not (WINDOWS or MAC):
     from qimage2ndarray import array2qimage
-if not MAC:
-    import blist
 
 # - - -
 
 _READ_SIZE = 8192
 
 # - - - exceptions
+
 
 # base exception
 class Error(Exception):
@@ -96,6 +95,7 @@ class NestedBreak(Error):
 
 
 # - - - general
+
 
 # checks that the given function returns the given value
 def test(func, args, rval):
@@ -135,6 +135,8 @@ def warn(msg):
 
 
 _NLS_MSG = re.compile(r"^(\n*)(.*)$", re.DOTALL)
+
+
 # prints message and exits; leading newlines in message are placed before
 #  "error"
 def error(msg):
@@ -362,6 +364,7 @@ def startDaemon(target, args=()):
 
 # - - - strings
 
+
 # converts the given seconds since epoch to YYYY-MM-DD HH:MM:SS format
 # notes:
 # * current time is used if no seconds since epoch are given
@@ -480,6 +483,8 @@ def pluralS(n):
 
 
 _INFL = inflect.engine()
+
+
 # returns "n items" with proper plural
 def nItems(n, item):
     return "%d %s" % (n, item if n == 1 else _INFL.plural(item))
@@ -593,6 +598,7 @@ def _repeatsTest():
 
 # - - - lists
 
+
 # returns duplicates for the given list, returning, e.g., [2] for [1, 2, 2]
 def duplicates(l):
     return [e for e, cnt in list(collections.Counter(l).items()) if cnt > 1]
@@ -612,6 +618,7 @@ def concat(l, asIt=False):
 
 
 # - - - tuples
+
 
 # returns t2 as tuple
 #  if t2 is int, float, or string, t2 is replicated len(t1) times
@@ -642,41 +649,8 @@ def tupleMul(t1, t2):
     return tupleOp(operator.mul, t1, t2)
 
 
-# - - - blist
-
-# returns the n elements before and after the given object in the given
-#  sorted list or blist.sortedlist
-def beforeAfter(sl, obj, n=1):
-    blsl = isinstance(sl, blist.sortedlist)
-    li = sl.bisect_left(obj) if blsl else bisect.bisect_left(sl, obj)
-    ri = sl.bisect(obj) if blsl else bisect.bisect(sl, obj)
-    res = 2 * n * [None]
-    for i in range(-n, n):
-        i1 = li + i if i < 0 else ri + i
-        res[i + n] = None if i1 < 0 or i1 >= len(sl) else sl[i1]
-    return res
-
-
-def _beforeAfterTest():
-    l = [1, 4, 4, 6, 10]
-    d = {
-        4: [1, 6],
-        1: [None, 4],
-        0: [None, 1],
-        8: [6, 10],
-        20: [10, None],
-        (4, 2): [None, 1, 6, 10],
-        (6, 3): [1, 4, 4, 10, None, None],
-    }
-    for i in [0, 1]:
-        if i == 1:
-            l = blist.sortedlist(l)
-        for obj, rv in d.items():
-            args = [l] + list(obj) if isinstance(obj, tuple) else [l, obj]
-            test(beforeAfter, args, rv)
-
-
 # - - - numpy
+
 
 # returns slice objects for all contiguous true regions in the given array
 def trueRegions(a):
@@ -774,6 +748,7 @@ def _maxkTest():
 # xy: sequence of points (or trajectory) in one of two formats:
 #  - tuple with x and y arrays
 #  - matrix with point in each row
+
 
 # converts points to matrix format
 def xy2M(xy):
@@ -874,6 +849,7 @@ def butter(x, N=1, Wn=0.5):
 
 _TEST_RDP = False
 
+
 # returns RDP-simplified trajectory in matrix format for the given points and
 #  indexes of points kept
 def rdp(xy, epsilon, useRdpPkg=False):
@@ -903,6 +879,7 @@ def rdp(xy, epsilon, useRdpPkg=False):
 
 # - - - matplotlib
 
+
 # plots text raising ArgumentError for NaN positions, avoiding "cryptic" error:
 #  https://github.com/matplotlib/matplotlib/issues/4318#issuecomment-436266884
 def pltText(x, y, s, **kwargs):
@@ -912,6 +889,7 @@ def pltText(x, y, s, **kwargs):
 
 
 # - - - stats
+
 
 # returns mean, confidence interval, and number of finite values for the
 #  given array
@@ -954,6 +932,7 @@ def p2stars(p, nsWithP=False, nanR=None):
 
 # - - - dictionary
 
+
 # inverts mapping; if mapping has non-unique values, possibly use toSet
 def invert(m, toSet=False):
     it = iter(m.items()) if isinstance(m, dict) else iter(m)
@@ -976,6 +955,7 @@ def _invertTest():
 
 
 # - - - file
+
 
 # returns absolute path for file that is part of package given relative name
 def packageFilePath(fn):
@@ -1079,6 +1059,7 @@ def readCsv(fn, toInt=True, nCols=None):
 
 _GLOB_CHARS = re.compile(r"[*?[]")
 
+
 # returns list of filenames given filename or directory name and pattern (to
 #  filter directory); a comma-separated list of names can also be given;
 #  names can contain wildcards *, ?, and []
@@ -1114,6 +1095,7 @@ def writeCommand(lf, csvStyle=False, inclRev=True):
 
 
 # - - - OpenCV
+
 
 # turns the given x and y arrays or the given list of alternating x and y
 #  values into array with array of points for, e.g., fillPoly() or polylines()
@@ -1497,6 +1479,8 @@ def putText(img, txt, pos, whAdjust, style, lnHeightMult=1.7, colWidthMult=1.1):
 
 
 _PROPS_WH = ("FRAME_WIDTH", "FRAME_HEIGHT")
+
+
 # returns new VideoCapture given filename or device number and checks whether
 #  the constructor succeeded
 def videoCapture(fnDev):
@@ -1621,6 +1605,7 @@ def readStringKeyboard():
 
 # - - - Qt
 
+
 # returns QImage given OpenCV image
 def qimage(img):
     return array2qimage(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -1655,6 +1640,7 @@ Microsoft LifeCam Cinema(TM) (usb-0000:00:1a.0-1.3):
 	/dev/video0
 ...
 """
+
 
 # gets or sets V4L2 control(s) for the given device, or if ctl is None, returns
 #  default and value for each control (e.g., [("focus_auto", "0", "0"), ...]);
