@@ -28,6 +28,7 @@ from splinedist.utils import (
     get_contoursize_max,
     grid_generator,
     phi_generator,
+    read_image
 )
 import sys
 from tifffile import imread
@@ -39,10 +40,6 @@ sys_type = platform.system()
 win_drive_letter = "P"
 if sys_type == "Windows" and "Dell2" in platform.node():
     win_drive_letter = "R"
-DATA_BASE_DIR = {
-    "Windows": f"{win_drive_letter}:/Robert/splineDist/data",
-    "Linux": "/media/Synology3/Robert/splineDist/data",
-}[sys_type]
 train_ts = datetime.datetime.now()
 
 # IMG_SCALING_FACTOR = 2.5
@@ -62,10 +59,11 @@ def options():
     )
     parser.add_argument(
         "--data_base_dir",
-        help="path to the folder where individual datasets are"
-        " stored (as specified by data_path). Defaults to Robert/splineDist/data"
-        " on Synology3.",
-        default=DATA_BASE_DIR,
+        default={
+            "Windows": f"{win_drive_letter}:/Robert/splineDist/data",
+            "Linux": "/media/Synology3/Robert/splineDist/data",
+        }[platform.system()],
+        help="Path to the base folder storing datasets (default: OS-specific location).",
     )
     parser.add_argument(
         "--coco_file_path",
@@ -136,12 +134,12 @@ if opts.debug:
 Path(results_for_host).mkdir(exist_ok=True, parents=True)
 if not os.path.isdir(data_dir(must_exist=False)):
     Path(data_dir(must_exist=False)).mkdir(parents=True, exist_ok=True)
-image_dir = Path(DATA_BASE_DIR) / opts.data_path / "images"
+image_dir = Path(opts.data_base_dir) / opts.data_path / "images"
 X = sorted([p for p in image_dir.glob("*") if p.suffix.lower() in (".tif", ".png")])
 img_filepaths = X
 masks = {k: [] for k in X}
 # X = [cv2.resize(img, (0, 0), fx=IMG_SCALING_FACTOR, fy=IMG_SCALING_FACTOR) for img in list(map(imread, X))]
-X = list(map(imread, X))
+X = [read_image(p) for p in X]
 
 
 def create_masks(filepath, coco_data, img_id, orig_img, num_masks=6):
@@ -192,12 +190,12 @@ if opts.coco_file_path:
                 create_masks(filepath, coco_data, img_id, X[i])
 else:
     mask_filepaths = sorted(
-        glob(os.path.join(DATA_BASE_DIR, opts.data_path, "masks/*.tif"))
+        glob(os.path.join(opts.data_base_dir, opts.data_path, "masks/*.tif"))
     )
     for filepath in img_filepaths:
         img_basename = os.path.basename(filepath)
         mask_filepath = os.path.join(
-            DATA_BASE_DIR, opts.data_path, "masks", img_basename
+            opts.data_base_dir, opts.data_path, "masks", img_basename
         )
         assert os.path.exists(mask_filepath)
         # masks[filepath].append(cv2.resize(imread(mask_filepath), (0, 0),

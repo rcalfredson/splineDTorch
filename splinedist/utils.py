@@ -9,12 +9,16 @@ from scipy.ndimage.measurements import find_objects
 from skimage.measure import regionprops
 import spline_generator as sg
 from splinedist.constants import DEVICE
+from tifffile import imread as tiff_imread
+from pathlib import Path
+from PIL import Image
 import torch
 from typing import Union
 import warnings
 
 has_cv2_v4 = cv2.__version__.startswith("4")
 onload_ts = datetime.now()
+
 
 def data_dir(must_exist=True):
     prospective_dir = os.path.join(
@@ -25,8 +29,18 @@ def data_dir(must_exist=True):
     elif must_exist and not os.path.isdir(prospective_dir):
         return "./"
 
+
 phi = np.load(os.path.join(data_dir(), "phi_" + str(8) + ".npy"))
 
+
+def read_image(path):
+    ext = Path(path).suffix.lower()
+    if ext in (".tif", ".tiff"):
+        return tiff_imread(path)
+    elif ext == ".png":
+        return np.array(Image.open(path))
+    else:
+        raise ValueError(f"Unsupported format: {ext}")
 
 
 def _is_power_of_2(i):
@@ -260,6 +274,7 @@ def fill_label_holes(lbl_img, **kwargs):
         mask_filled = binary_fill_holes(grown_mask, **kwargs)[shrink_slice]
         lbl_img_filled[sl][mask_filled] = i
     return lbl_img_filled
+
 
 def get_interpolated_points(data, n_points=30):
     M = np.shape(data)[2]
